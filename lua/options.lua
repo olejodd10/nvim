@@ -16,3 +16,4 @@ vim.opt.colorcolumn = "80"
 vim.opt.ignorecase = true -- Needed for smartcase
 vim.opt.smartcase = true
 
+vim.cmd.lan("en_GB", true)
