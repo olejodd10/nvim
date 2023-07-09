@@ -20,3 +20,7 @@ vim.keymap.set("i", "[<CR>", "[]<left><CR>")
 vim.keymap.set("i", "<<CR>", "<><left><CR>")
 vim.keymap.set("i", "{<CR>", "{}<left><CR>")
 
+vim.keymap.set("i", "<C-h>", "<C-w>") -- Also remaps <C-BS>
+vim.keymap.set("i", "<C-l>", "<Esc>ldwi") -- Delete word behind the cursor
+
+-- set backspace=indent,eol,start seems to be default
