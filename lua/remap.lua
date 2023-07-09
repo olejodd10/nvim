@@ -25,3 +25,5 @@ vim.keymap.set("i", "<C-l>", "<Esc>ldwi") -- Delete word behind the cursor
 
 vim.keymap.set("i", "<C-v>", "<C-r>+")
 vim.keymap.set("i", "<S-Tab>", "<C-d>")
+
+vim.keymap.set("n", "<C-j>", ":!")
