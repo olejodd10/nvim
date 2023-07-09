@@ -1,1 +1,1 @@
-require('nvim_comment').setup({comment_empty = false})
+require('Comment').setup({ignore = "^$"}) -- Ignore empty lines

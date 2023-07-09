@@ -9,7 +9,7 @@
     api.config.mappings.default_on_attach(bufnr)
 
     -- custom mappings
-    vim.keymap.set("n", "<C-c>", api.tree.change_root_to_node, opts("CD"))
+    vim.keymap.set("n", "<C-s>", api.tree.change_root_to_node, opts("CD remap"))
   end
 
   -- pass to setup along with your other options

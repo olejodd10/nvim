@@ -52,5 +52,5 @@ use {
   },
 }
 
-use "terrortylor/nvim-comment"
+use "numToStr/Comment.nvim"
 end)
