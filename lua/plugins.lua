@@ -45,12 +45,5 @@ return require('packer').startup(function(use)
   }
 }
 
-use {
-  'nvim-tree/nvim-tree.lua',
-  requires = {
-    'nvim-tree/nvim-web-devicons', -- optional. https://www.nerdfonts.com/font-downloads Agave font is nice
-  },
-}
-
 use "numToStr/Comment.nvim"
 end)
