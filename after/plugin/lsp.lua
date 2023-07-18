@@ -12,7 +12,7 @@ local cmp_action = require('lsp-zero').cmp_action()
 
 cmp.setup({
   mapping = {
-    ['<Tab>'] = cmp.mapping.confirm({select = false}),
+    ['<Tab>'] = cmp.mapping.confirm({select = true}),
   },
   window = {
     completion = cmp.config.window.bordered(),
