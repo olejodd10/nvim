@@ -27,3 +27,6 @@ vim.keymap.set("i", "<C-v>", "<C-r>+")
 vim.keymap.set("i", "<S-Tab>", "<C-d>")
 
 vim.keymap.set("n", "<C-j>", ":!")
+
+-- From ThePrimeagen
+vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
