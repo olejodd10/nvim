@@ -1,6 +1,9 @@
 local function navshow()
     vim.cmd.buffers()
 end
+local function navprev()
+    vim.cmd(":b#")
+end
 local function navright()
     vim.cmd.bnext()
 end
@@ -18,6 +21,7 @@ local function navindex(i)
     navshow()
 end
 
+vim.keymap.set("", "<M-p>", navprev) 
 vim.keymap.set("", "<M-right>", navright) -- Consider just <right> and <left>
 vim.keymap.set("", "<M-left>", navleft)
 vim.keymap.set("", "<M-down>", navdelete)
