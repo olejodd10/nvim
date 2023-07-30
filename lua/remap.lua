@@ -1,7 +1,5 @@
 vim.g.mapleader = " "
 
-vim.keymap.set("n", "<leader>cd", vim.cmd.Ex)
-
 vim.keymap.set("n", "<C-d>", "<C-d>zz")
 vim.keymap.set("n", "<C-u>", "<C-u>zz")
 
@@ -26,7 +24,10 @@ vim.keymap.set("i", "<C-l>", "<Esc>ldwi") -- Delete word behind the cursor
 vim.keymap.set("i", "<C-v>", "<C-r>+")
 vim.keymap.set("i", "<S-Tab>", "<C-d>")
 
-vim.keymap.set("n", "<C-j>", ":!")
+vim.keymap.set("n", "<leader>j", ":!")
+vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
+
+vim.keymap.set("c", "<C-g>", [[\(.*\)]])
 
 -- From ThePrimeagen
 vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
