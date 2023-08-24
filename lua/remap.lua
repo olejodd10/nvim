@@ -24,10 +24,14 @@ vim.keymap.set("i", "<C-l>", "<Esc>ldwi") -- Delete word behind the cursor
 vim.keymap.set("i", "<C-v>", "<C-r>+")
 vim.keymap.set("i", "<S-Tab>", "<C-d>")
 
-vim.keymap.set("n", "<leader>j", ":!")
+vim.keymap.set("n", "<leader>c", ":!")
 vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
 
 vim.keymap.set("c", "<C-g>", [[\(.*\)]])
 
 -- From ThePrimeagen
 vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
+
+vim.keymap.set("n", "æ", "/")
+vim.keymap.set("n", "ø", ":")
+vim.keymap.set("", "å", "$")
