@@ -43,7 +43,15 @@ return require('packer').startup(function(use)
 	  {'hrsh7th/cmp-nvim-lsp'}, -- Required
 	  {'L3MON4D3/LuaSnip'},     -- Required
   }
+
 }
 
 use "numToStr/Comment.nvim"
+
+vim.g.doge_mapping = "<leader>s"
+use {
+  'kkoomen/vim-doge',
+  run = ':call doge#install()'
+}
+
 end)
