@@ -54,4 +54,6 @@ use {
   run = ':call doge#install()'
 }
 
+use 'karb94/neoscroll.nvim'
+
 end)
