@@ -57,4 +57,11 @@ use {
 
 use 'karb94/neoscroll.nvim'
 
+use {
+    'nvim-tree/nvim-tree.lua',
+    requires = {
+        'nvim-tree/nvim-web-devicons', -- https://www.nerdfonts.com/font-downloads
+    },
+}
+
 end)
