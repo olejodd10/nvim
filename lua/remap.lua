@@ -33,6 +33,8 @@ vim.keymap.set("c", "<C-g>", [[\(.*\)]])
 -- From ThePrimeagen
 vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
 vim.keymap.set("n", "J", "mzJ'z")
+vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
+vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv")
 
 vim.keymap.set("n", "æ", "/")
 vim.keymap.set("n", "ø", ":")
