@@ -49,7 +49,6 @@ return require('packer').startup(function(use)
 
 use "numToStr/Comment.nvim"
 
-vim.g.doge_mapping = "<C-p>"
 use {
   'kkoomen/vim-doge',
   run = ':call doge#install()'
