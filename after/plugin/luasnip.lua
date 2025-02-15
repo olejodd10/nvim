@@ -2,8 +2,8 @@ local ls = require("luasnip")
 
 require("luasnip.loaders.from_vscode").load()
 
-vim.keymap.set({ "i", "s" }, "<C-l>", function() if ls.expand_or_jumpable() then ls.expand_or_jump() end end, { silent = true })
-vim.keymap.set({ "i", "s" }, "<C-h>", function() if ls.jumpable(-1) then ls.jump(-1) end end, { silent = true })
+vim.keymap.set({ "i", "s" }, "<C-j>", function() if ls.expand_or_jumpable() then ls.expand_or_jump() end end, { silent = true })
+vim.keymap.set({ "i", "s" }, "<C-k>", function() if ls.jumpable(-1) then ls.jump(-1) end end, { silent = true })
 
 local s = ls.snippet
 local t = ls.text_node
