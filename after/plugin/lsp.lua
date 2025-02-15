@@ -17,5 +17,14 @@ cmp.setup({
   window = {
     completion = cmp.config.window.bordered(),
     documentation = cmp.config.window.bordered(),
-  }
+  },
+  sources = {
+      { name = 'nvim_lsp' },
+      { name = 'luasnip' },
+  },
+  snippet = {
+      expand = function(args)
+          require'luasnip'.lsp_expand(args.body)
+      end
+  },
 })

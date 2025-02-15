@@ -42,7 +42,10 @@ return require('packer').startup(function(use)
 	  -- Autocompletion
 	  {'hrsh7th/nvim-cmp'},     -- Required
 	  {'hrsh7th/cmp-nvim-lsp'}, -- Required
-	  {'L3MON4D3/LuaSnip'},     -- Required
+	  {'L3MON4D3/LuaSnip', -- Required
+        requires = 'rafamadriz/friendly-snippets', -- https://github.com/folke/lazy.nvim/issues/266#issuecomment-1368271202
+      },
+      { 'saadparwaiz1/cmp_luasnip' },
   }
 
 }
