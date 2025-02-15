@@ -28,6 +28,7 @@ vim.keymap.set("i", "<S-Tab>", "<C-d>")
 vim.keymap.set("n", "<leader>c", ":!")
 vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
 
+vim.keymap.set("n", "<leader>s", [[:%s///g<Left><Left><Left>]])
 vim.keymap.set("c", "<C-g>", [[\(.*\)]])
 
 -- From ThePrimeagen
