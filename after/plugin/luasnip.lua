@@ -10,6 +10,7 @@ local t = ls.text_node
 local i = ls.insert_node
 
 local fmt = require("luasnip.extras.fmt").fmt
+local rep = require("luasnip.extras").rep
 
 ls.add_snippets("c", {
     s("funksjon",
@@ -20,5 +21,8 @@ ls.add_snippets("c", {
     ),
     s("svitsj",
         fmt("switch ({}) {{\ncase {}:\n\t{}\n\tbreak;\ndefault:\n\tbreak;\n}}", {i(1, "condition"), i(2, "case"), i(0)})
+    ),
+    s("header",
+        fmt("ifndef {}\n#define {}\n\n{}\n\n#endif // {}", {i(1, "MODULE_H"), rep(1), i(0), rep(1)})
     ),
 })
