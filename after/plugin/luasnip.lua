@@ -23,6 +23,8 @@ ls.add_snippets("c", {
         fmt("switch ({}) {{\ncase {}:\n\t{}\n\tbreak;\ndefault:\n\tbreak;\n}}", {i(1, "condition"), i(2, "case"), i(0)})
     ),
     s("header",
-        fmt("ifndef {}\n#define {}\n\n{}\n\n#endif // {}", {i(1, "MODULE_H"), rep(1), i(0), rep(1)})
+        fmt("#ifndef {}_H\n#define {}_H\n\n{}\n\n#endif // {}_H", {i(1, "MODULE"), rep(1), i(0), rep(1)})
     ),
 })
+
+ls.filetype_extend("cpp", { "c" })
