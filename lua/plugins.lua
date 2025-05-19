@@ -66,4 +66,6 @@ use {
     },
 }
 
+use 'nvim-treesitter/nvim-treesitter-context'
+
 end)
