@@ -12,7 +12,7 @@ return require('packer').startup(function(use)
 	  requires = { {'nvim-lua/plenary.nvim'} }
   }
 
-  use 'navarasu/onedark.nvim'
+  use 'zootedb0t/citruszest.nvim'
 
   use {
 	  'nvim-treesitter/nvim-treesitter',
