@@ -25,47 +25,33 @@ return require('packer').startup(function(use)
   use 'mbbill/undotree'
   use 'tpope/vim-fugitive'
   
-  use {
-	  'VonHeikemen/lsp-zero.nvim',
-	  branch = 'v2.x',
-	  requires = {
-		  -- LSP Support
-		  {'neovim/nvim-lspconfig'},             -- Required
-		  {                                      -- Optional
-		  'williamboman/mason.nvim',
-		  run = function()
-			  pcall(vim.cmd, 'MasonUpdate')
-		  end,
-	  },
-	  {'williamboman/mason-lspconfig.nvim'}, -- Optional
 
-	  -- Autocompletion
-	  {'hrsh7th/nvim-cmp'},     -- Required
-	  {'hrsh7th/cmp-nvim-lsp'}, -- Required
-	  {'L3MON4D3/LuaSnip', -- Required
-        requires = 'rafamadriz/friendly-snippets', -- https://github.com/folke/lazy.nvim/issues/266#issuecomment-1368271202
-      },
-      { 'saadparwaiz1/cmp_luasnip' },
+  use "numToStr/Comment.nvim"
+
+  use {
+      'kkoomen/vim-doge',
+      run = ':call doge#install()'
   }
 
-}
+  use 'karb94/neoscroll.nvim'
 
-use "numToStr/Comment.nvim"
+  use {
+      'nvim-tree/nvim-tree.lua',
+      requires = {
+          'nvim-tree/nvim-web-devicons', -- https://www.nerdfonts.com/font-downloads
+      },
+  }
 
-use {
-  'kkoomen/vim-doge',
-  run = ':call doge#install()'
-}
+  use 'nvim-treesitter/nvim-treesitter-context'
 
-use 'karb94/neoscroll.nvim'
 
-use {
-    'nvim-tree/nvim-tree.lua',
-    requires = {
-        'nvim-tree/nvim-web-devicons', -- https://www.nerdfonts.com/font-downloads
-    },
-}
-
-use 'nvim-treesitter/nvim-treesitter-context'
+  -- LSP and autocomplete
+  use 'neovim/nvim-lspconfig'
+  use 'hrsh7th/nvim-cmp'
+  use 'hrsh7th/cmp-nvim-lsp'
+  use 'saadparwaiz1/cmp_luasnip'
+  use { 'L3MON4D3/LuaSnip',
+        requires = 'rafamadriz/friendly-snippets', -- https://github.com/folke/lazy.nvim/issues/266#issuecomment-1368271202
+      }
 
 end)
