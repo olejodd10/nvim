@@ -17,6 +17,23 @@ vim.api.nvim_create_autocmd('LspAttach', {
   end,
 })
 
+-- Zephyr places compile_commands.json here, from which clangd can get include paths
+local function get_clangd_cmd()
+  local cwd = vim.loop.cwd()
+  local project = vim.fn.fnamemodify(cwd, ":t")
+  local build_dir = cwd .. "/build/" .. project
+
+  if vim.fn.isdirectory(build_dir) == 1 then
+    return { "clangd", "--compile-commands-dir=" .. build_dir }
+  else
+    return { "clangd" }
+  end
+end
+
+vim.lsp.config('clangd', {
+  cmd = get_clangd_cmd(),
+})
+
 -- Loads config from nvim-lspconfig. See :checkhealth vim.lsp when attached
 vim.lsp.enable('clangd')
 
