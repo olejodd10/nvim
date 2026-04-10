@@ -59,4 +59,7 @@ return {
     },
     config = function() require('config.nvimtree') end,
   },
+
+  -- Copilot
+  'github/copilot.vim',
 }
