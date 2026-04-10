@@ -51,25 +51,3 @@ vim.api.nvim_create_autocmd('LspAttach', {
 
 vim.lsp.enable('lua_ls')
 
-local cmp = require('cmp')
-
-cmp.setup({
-  mapping = {
-    ['<Tab>'] = cmp.mapping.confirm({select = true}),
-  },
-  window = {
-    completion = cmp.config.window.bordered(),
-    documentation = cmp.config.window.bordered(),
-  },
-  sources = {
-      { name = 'nvim_lsp' },
-      { name = 'luasnip' },
-  },
-  snippet = {
-      expand = function(args)
-          require'luasnip'.lsp_expand(args.body)
-      end
-  },
-})
-
-

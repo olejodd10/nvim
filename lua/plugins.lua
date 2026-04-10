@@ -1,57 +1,62 @@
--- This file can be loaded by calling `lua require('plugins')` from your init.vim
+return {
+  -- Colorscheme
+  {
+    'zootedb0t/citruszest.nvim',
+    lazy = false,
+    priority = 1000,
+    config = function() require('config.citruszest') end,
+  },
 
--- Only required if you have packer configured as `opt`
-vim.cmd [[packadd packer.nvim]]
+  -- Treesitter
+  {
+    'nvim-treesitter/nvim-treesitter',
+    lazy = false,
+    build = ':TSUpdate',
+    config = function() require('config.treesitter') end,
+  },
 
-return require('packer').startup(function(use)
-  -- Packer can manage itself
-  use 'wbthomason/packer.nvim'
+  'nvim-treesitter/nvim-treesitter-context',
 
-  use {
-	  'nvim-telescope/telescope.nvim', tag = '0.1.2',
-	  requires = { {'nvim-lua/plenary.nvim'} }
-  }
+  -- LSP
+  'neovim/nvim-lspconfig',
 
-  use 'zootedb0t/citruszest.nvim'
+  -- Telescope
+  {
+    'nvim-telescope/telescope.nvim',
+    dependencies = { 'nvim-lua/plenary.nvim' },
+    config = function() require('config.telescope') end,
+  },
 
-  use {
-	  'nvim-treesitter/nvim-treesitter',
-	  run = function()
-		  local ts_update = require('nvim-treesitter.install').update({ with_sync = true })
-		  ts_update()
-	  end,
-  }
-  
-  use 'mbbill/undotree'
-  use 'tpope/vim-fugitive'
-  
+  -- Git
+  {
+    'tpope/vim-fugitive',
+    config = function() require('config.fugitive') end,
+  },
 
-  use "numToStr/Comment.nvim"
+  -- Comments
+  {
+    'numToStr/Comment.nvim',
+    config = function() require('config.comment') end,
+  },
 
-  use {
-      'kkoomen/vim-doge',
-      run = ':call doge#install()'
-  }
+  -- Documentation generator
+  {
+    'kkoomen/vim-doge',
+    build = ':call doge#install()'
+  },
 
-  use 'karb94/neoscroll.nvim'
+  -- Smooth scrolling
+  {
+    'karb94/neoscroll.nvim',
+    config = function() require('config.neoscroll') end,
+  },
 
-  use {
-      'nvim-tree/nvim-tree.lua',
-      requires = {
-          'nvim-tree/nvim-web-devicons', -- https://www.nerdfonts.com/font-downloads
-      },
-  }
-
-  use 'nvim-treesitter/nvim-treesitter-context'
-
-
-  -- LSP and autocomplete
-  use 'neovim/nvim-lspconfig'
-  use 'hrsh7th/nvim-cmp'
-  use 'hrsh7th/cmp-nvim-lsp'
-  use 'saadparwaiz1/cmp_luasnip'
-  use { 'L3MON4D3/LuaSnip',
-        requires = 'rafamadriz/friendly-snippets', -- https://github.com/folke/lazy.nvim/issues/266#issuecomment-1368271202
-      }
-
-end)
+  -- File explorer
+  {
+    'nvim-tree/nvim-tree.lua',
+    dependencies = {
+      'nvim-tree/nvim-web-devicons',
+    },
+    config = function() require('config.nvimtree') end,
+  },
+}
