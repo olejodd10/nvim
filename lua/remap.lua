@@ -32,6 +32,8 @@ vim.keymap.set("n", "<leader>s", [[:%s///g<Left><Left><Left>]])
 vim.keymap.set("c", "<C-g>", [[\(.*\)]])
 vim.g.doge_mapping = "<C-p>"
 
+vim.keymap.set("n", "L", vim.diagnostic.open_float)
+
 -- From ThePrimeagen
 vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
 vim.keymap.set("n", "J", "mzJ'z")
