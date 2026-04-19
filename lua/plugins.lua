@@ -61,5 +61,8 @@ return {
   },
 
   -- Copilot
-  'github/copilot.vim',
+  {
+    'github/copilot.vim',
+    config = function() require('config.copilot') end,
+  },
 }
