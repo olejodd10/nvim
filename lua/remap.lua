@@ -29,6 +29,8 @@ vim.keymap.set("n", "<leader>c", ":!")
 vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
 
 vim.keymap.set("n", "<leader>s", [[:%s///g<Left><Left><Left>]])
+vim.keymap.set("x", "<leader>s", [["zy:%s/<C-r>z/<C-r>z/gIc<Left><Left><Left><Left>]])
+
 vim.keymap.set("c", "<C-g>", [[\(.*\)]])
 vim.g.doge_mapping = "<C-p>"
 
