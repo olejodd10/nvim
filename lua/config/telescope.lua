@@ -35,4 +35,11 @@ local function visual_live_grep()
   builtin.live_grep({ cwd = project_root(), default_text = selection })
 end
 
+local function visual_find_files()
+  vim.cmd('noau normal! "zy"')
+  local selection = vim.fn.getreg('z')
+  builtin.find_files({ cwd = project_root(), default_text = selection })
+end
+
 vim.keymap.set('x', '<leader>fg', visual_live_grep, {})
+vim.keymap.set('x', '<leader>ff', visual_find_files, {})
