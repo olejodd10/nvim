@@ -28,3 +28,11 @@ vim.keymap.set('n', '<leader>fb', builtin.buffers, {})
 vim.keymap.set('n', '<leader>fh', builtin.help_tags, {})
 vim.keymap.set('n', '<leader>fw', builtin.grep_string, {})
 vim.keymap.set('n', '<leader>fs', builtin.git_files, {})
+
+local function visual_live_grep()
+  vim.cmd('noau normal! "zy"')
+  local selection = vim.fn.getreg('z')
+  builtin.live_grep({ cwd = project_root(), default_text = selection })
+end
+
+vim.keymap.set('x', '<leader>fg', visual_live_grep, {})
