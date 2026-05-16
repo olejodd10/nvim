@@ -19,9 +19,9 @@ vim.keymap.set("i", "[<CR>", "[]<left><CR>")
 vim.keymap.set("i", "<<CR>", "<><left><CR>")
 vim.keymap.set("i", "{<CR>", "{}<left><CR>")
 
-vim.keymap.set("i", "<C-h>", "<C-w>") -- Also remaps <C-BS>
-vim.keymap.set("i", "<C-l>", "<Esc>ldwi") -- Delete word behind the cursor
-
+-- Intuitive insert mode stuff
+vim.keymap.set("i", "<C-BS>", "<C-w>")
+vim.keymap.set("i", "<C-DEL>", "<Esc>ldwi") -- Delete word behind the cursor
 vim.keymap.set("i", "<C-v>", "<C-r>+")
 vim.keymap.set("i", "<S-Tab>", "<C-d>")
 
