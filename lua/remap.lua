@@ -36,12 +36,17 @@ vim.g.doge_mapping = "<C-p>"
 
 vim.keymap.set("n", "L", vim.diagnostic.open_float)
 
+-- Powerful Norwegian remaps
+vim.keymap.set("n", "æ", "/")
+vim.keymap.set("n", "ø", ":")
+vim.keymap.set("", "å", "$")
+
+vim.keymap.set("n", "Ø", "[")
+vim.keymap.set("n", "Æ", "]")
+vim.keymap.set("", "Å", "_")
+
 -- From ThePrimeagen
 vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
 vim.keymap.set("n", "J", "mzJ'z")
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
 vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv")
-
-vim.keymap.set("n", "æ", "/")
-vim.keymap.set("n", "ø", ":")
-vim.keymap.set("", "å", "$")
