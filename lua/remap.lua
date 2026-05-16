@@ -36,6 +36,15 @@ vim.g.doge_mapping = "<C-p>"
 
 vim.keymap.set("n", "L", vim.diagnostic.open_float)
 
+-- Resembles tmux resizing
+-- Ctrl-s because it is close to Ctrl-w (moving between windows)
+-- and can be remembered as "s for size"
+vim.keymap.set("n", "<C-s>l", ":vertical resize +5<CR><C-s>", {remap = true})
+vim.keymap.set("n", "<C-s>h", ":vertical resize -5<CR><C-s>", {remap = true})
+vim.keymap.set("n", "<C-s>j", ":horizontal resize +5<CR><C-s>", {remap = true})
+vim.keymap.set("n", "<C-s>k", ":horizontal resize -5<CR><C-s>", {remap = true})
+vim.keymap.set("n", "<C-s>s", "<C-c>") -- Can exit with s as well as <C-c>
+
 -- Powerful Norwegian remaps
 vim.keymap.set("n", "æ", "/")
 vim.keymap.set("n", "ø", ":")
