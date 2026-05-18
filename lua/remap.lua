@@ -31,6 +31,9 @@ vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
 vim.keymap.set("n", "<leader>s", [[:%s///g<Left><Left><Left>]])
 vim.keymap.set("x", "<leader>s", [["zy:%s/<C-r>z/<C-r>z/gIc<Left><Left><Left><Left>]])
 
+vim.keymap.set("x", "/", [["zy/<C-r>z<CR>]])
+vim.keymap.set("x", "?", [["zy?<C-r>z<CR>]])
+
 vim.keymap.set("c", "<C-g>", [[\(.*\)]])
 vim.g.doge_mapping = "<C-p>"
 
@@ -46,7 +49,7 @@ vim.keymap.set("n", "<C-s>k", ":horizontal resize -5<CR><C-s>", {remap = true})
 vim.keymap.set("n", "<C-s>s", "<C-c>") -- Can exit with s as well as <C-c>
 
 -- Powerful Norwegian remaps
-vim.keymap.set("n", "æ", "/")
+vim.keymap.set({ "n", "x" }, "æ", "/", {remap = true})
 vim.keymap.set("n", "ø", ":")
 vim.keymap.set("", "å", "$")
 
