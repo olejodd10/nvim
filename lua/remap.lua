@@ -24,7 +24,6 @@ vim.keymap.set("i", "<C-BS>", "<C-w>")
 vim.keymap.set("i", "<C-H>", "<C-w>") -- <C-H> is what most terminals send for Ctrl+Backspace
 vim.keymap.set("i", "<C-DEL>", "<Esc>ldwi") -- Delete word behind the cursor
 vim.keymap.set("i", "<C-v>", "<C-r>+")
-vim.keymap.set("i", "<S-Tab>", "<C-d>")
 
 vim.keymap.set("n", "<leader>c", ":!")
 vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
