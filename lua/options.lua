@@ -20,4 +20,6 @@ vim.opt.smartcase = true
 
 vim.opt.signcolumn = 'yes' -- Otherwise will shift screen annoyingly when there is something to display in the signcolumn
 
+vim.opt.winborder = "rounded"
+
 -- vim.cmd.lan("en_GB", true)
