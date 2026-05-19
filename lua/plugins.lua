@@ -63,6 +63,7 @@ return {
   -- Copilot
   {
     'github/copilot.vim',
+    init = function() vim.g.copilot_no_tab_map = true end,
     config = function() require('config.copilot') end,
   },
 
