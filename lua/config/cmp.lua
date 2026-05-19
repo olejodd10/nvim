@@ -13,7 +13,9 @@ cmp.setup({
         completion = cmp.config.window.bordered(),
         documentation = cmp.config.window.bordered(),
     },
-    mapping = cmp.mapping.preset.insert(), -- Use default preset
+    mapping = cmp.mapping.preset.insert({
+      ['<C-y>'] = cmp.mapping.confirm({ select = true }), -- select == true makes it possible to confirm the first suggestion before it has been explicitly selected
+    }),
     -- Try to keep the sources minimalistic. A window that pops up too often is just annoying
     sources = cmp.config.sources({
         { name = 'nvim_lsp' },
