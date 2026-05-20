@@ -78,4 +78,10 @@ return {
       },
       config = function() require('config.cmp') end,
   },
+
+  -- Alignment
+  {
+    'junegunn/vim-easy-align',
+    config = function() require('config.align') end,
+  },
 }
