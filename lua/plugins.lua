@@ -84,4 +84,7 @@ return {
     'junegunn/vim-easy-align',
     config = function() require('config.align') end,
   },
+
+  -- Surrounding
+  'tpope/vim-surround',
 }

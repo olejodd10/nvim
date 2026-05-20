@@ -22,4 +22,3 @@ require("lazy").setup(require("plugins"))
 require("lsp")
 
 vim.cmd.runtime("vim/argumentative.vim")
-vim.cmd.runtime("vim/surround.vim")
