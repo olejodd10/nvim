@@ -87,4 +87,7 @@ return {
 
   -- Surrounding
   'tpope/vim-surround',
+
+  -- Function argument navigation and text objects
+  'PeterRincker/vim-argumentative',
 }

@@ -20,5 +20,3 @@ require("tabs")
 require("lazy").setup(require("plugins"))
 
 require("lsp")
-
-vim.cmd.runtime("vim/argumentative.vim")
