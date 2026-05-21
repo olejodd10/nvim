@@ -22,4 +22,8 @@ vim.opt.signcolumn = 'yes' -- Otherwise will shift screen annoyingly when there 
 
 vim.opt.winborder = "rounded"
 
+-- Current dependees: autocompletion, ...
+vim.o.pumborder = "rounded"
+vim.o.pumheight = 25
+
 -- vim.cmd.lan("en_GB", true)

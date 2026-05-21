@@ -19,4 +19,5 @@ require("tabs")
 
 require("lazy").setup(require("plugins"))
 
+require("cmp")
 require("lsp")

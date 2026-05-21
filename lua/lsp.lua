@@ -50,8 +50,3 @@ vim.api.nvim_create_autocmd('LspAttach', {
 
 vim.lsp.enable('clangd')
 vim.lsp.enable('lua_ls')
-
-local capabilities = require('cmp_nvim_lsp').default_capabilities()
-
-vim.lsp.config('clangd', { capabilities = capabilities })
-vim.lsp.config('lua_ls', { capabilities = capabilities })
