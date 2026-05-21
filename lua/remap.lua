@@ -39,6 +39,11 @@ vim.g.doge_mapping = "<C-p>"
 
 vim.keymap.set("n", "L", vim.diagnostic.open_float)
 
+-- Save one keystroke when editing stuff separated with - and _
+vim.keymap.set("o", "-", "f-")
+vim.keymap.set("o", "_", "f_")
+vim.keymap.set("o", "q", "f_") -- Faster
+
 -- Resembles tmux resizing
 -- Ctrl-s because it is close to Ctrl-w (moving between windows)
 -- and can be remembered as "s for size"
