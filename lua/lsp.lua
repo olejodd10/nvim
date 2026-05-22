@@ -1,3 +1,11 @@
+-- Unmap defaults so gr executes immediately
+vim.keymap.del('n', 'gra')
+vim.keymap.del('n', 'gri')
+vim.keymap.del('n', 'grn')
+vim.keymap.del('n', 'grr')
+vim.keymap.del('n', 'grt')
+vim.keymap.del('n', 'grx') -- Default is vim.lsp.codelens.run(). Only one that is not mapped below
+
 -- Generic LSP keybindings. Specialized ones can be put in lsp/clangd.lua, for instance
 -- Inspired by https://lsp-zero.netlify.app/docs/getting-started.html
 vim.api.nvim_create_autocmd('LspAttach', {
