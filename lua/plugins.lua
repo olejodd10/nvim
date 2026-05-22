@@ -30,6 +30,9 @@ return {
   -- Git
   {
     'tpope/vim-fugitive',
+    dependencies = {
+        'tpope/vim-rhubarb', -- GitHub extension
+    },
     config = function() require('config.fugitive') end,
   },
 

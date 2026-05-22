@@ -9,3 +9,5 @@ vim.keymap.set("n", "<leader>gb", ":Git blame<CR>")
 vim.keymap.set("n", "<leader>gv", ":Gvdiffsplit<CR>") -- Cool beans
 vim.keymap.set("n", "<leader>gl", ":Git log<CR>")
 vim.keymap.set("n", "<leader>gd", ":Git diff") -- No <CR> to leave access to aliases and args
+
+vim.keymap.set("n", "<leader>gx", ":GBrowse<CR>")
