@@ -35,7 +35,6 @@ vim.keymap.set("x", "/", [["zy/<C-r>z<CR>]])
 vim.keymap.set("x", "?", [["zy?<C-r>z<CR>]])
 
 vim.keymap.set("c", "<C-g>", [[\(.*\)]])
-vim.g.doge_mapping = "<C-p>"
 
 vim.keymap.set("n", "L", vim.diagnostic.open_float)
 

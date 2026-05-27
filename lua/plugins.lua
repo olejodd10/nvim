@@ -45,7 +45,8 @@ return {
   -- Documentation generator
   {
     'kkoomen/vim-doge',
-    build = ':call doge#install()'
+    build = ':call doge#install()',
+    init = function() vim.g.doge_mapping = "<leader>m" end,
   },
 
   -- Smooth scrolling
