@@ -14,32 +14,30 @@ local function project_root()
   return vim.uv.cwd()
 end
 
-local function project_find_files()
-  builtin.find_files({ cwd = project_root() })
+local function from_project_root(func)
+  return function ()
+    func({ cwd = project_root() })
+  end
 end
 
-local function project_live_grep()
-  builtin.live_grep({ cwd = project_root() })
+local function with_default(func)
+  return function()
+    vim.cmd('noau normal! "zy"')
+    local selection = vim.fn.getreg('z')
+    func({ cwd = project_root(), default_text = selection })
+  end
 end
 
-vim.keymap.set('n', '<leader>ff', project_find_files, {})
-vim.keymap.set('n', '<leader>fg', project_live_grep, {})
-vim.keymap.set('n', '<leader>fb', builtin.buffers, {})
-vim.keymap.set('n', '<leader>fh', builtin.help_tags, {})
-vim.keymap.set('n', '<leader>fw', builtin.grep_string, {})
-vim.keymap.set('n', '<leader>fs', builtin.git_files, {})
+vim.keymap.set('n', '<leader>ff', from_project_root(builtin.find_files), {})
+vim.keymap.set('n', '<leader>fg', from_project_root(builtin.live_grep), {})
+vim.keymap.set('n', '<leader>fb', from_project_root(builtin.buffers), {})
+vim.keymap.set('n', '<leader>fh', from_project_root(builtin.help_tags), {}) -- Path probably doesn't matter
+vim.keymap.set('n', '<leader>fw', from_project_root(builtin.grep_string), {})
+vim.keymap.set('n', '<leader>fs', from_project_root(builtin.git_files), {})
 
-local function visual_live_grep()
-  vim.cmd('noau normal! "zy"')
-  local selection = vim.fn.getreg('z')
-  builtin.live_grep({ cwd = project_root(), default_text = selection })
-end
-
-local function visual_find_files()
-  vim.cmd('noau normal! "zy"')
-  local selection = vim.fn.getreg('z')
-  builtin.find_files({ cwd = project_root(), default_text = selection })
-end
-
-vim.keymap.set('x', '<leader>fg', visual_live_grep, {})
-vim.keymap.set('x', '<leader>ff', visual_find_files, {})
+vim.keymap.set('x', '<leader>fg', with_default(builtin.live_grep), {})
+vim.keymap.set('x', '<leader>ff', with_default(builtin.find_files), {})
+vim.keymap.set('x', '<leader>fb', with_default(builtin.buffers), {})
+vim.keymap.set('x', '<leader>fh', with_default(builtin.help_tags), {}) -- Path probably doesn't matter
+vim.keymap.set('x', '<leader>fw', from_project_root(builtin.grep_string), {}) -- grep_string kinda does this by default
+vim.keymap.set('x', '<leader>fs', with_default(builtin.git_files), {})
