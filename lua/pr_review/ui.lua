@@ -411,7 +411,10 @@ function M.populate_log()
       -- Header line
       add(entry, string.format('%s %s @%s%s', date, entry.icon, entry.user, state_tag))
       -- Full body, each line indented
-      local body = vim.trim((entry.body or ''):gsub('\r\n', '\n'):gsub('\r', '\n'))
+      local body = ''
+      if type(entry.body) == 'string' then
+          body = vim.trim(entry.body:gsub('\r\n', '\n'):gsub('\r', '\n'))
+      end
       if body ~= '' then
         for body_line in (body .. '\n'):gmatch('([^\n]*)\n') do
           add(entry, '  ' .. body_line)
