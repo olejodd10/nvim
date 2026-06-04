@@ -717,6 +717,22 @@ local function find_first_content_line()
   return 1
 end
 
+-- Return the 0-indexed column of the right SHA on the meta line at `row`,
+-- or 0 if the line has no right SHA (e.g. inner diff content).
+local function right_sha_col_for_row(row)
+  local s = state()
+  local lines = s.range_diff_lines or {}
+  local line = lines[row]
+  if not line then return 0 end
+  local entry = parse_meta_line(line)
+  if not entry then return 0 end
+  local pos = sha_column_ranges(line, entry)
+  if pos.right then
+    return pos.right[1] - 1  -- sha_column_ranges is 1-indexed; nvim_win_set_cursor col is 0-indexed
+  end
+  return 0
+end
+
 function M.update_range_diff(tip_idx)
   local s = state()
   s.current_tip_idx = tip_idx
@@ -786,7 +802,8 @@ function M.update_range_diff(tip_idx)
   if vim.api.nvim_win_is_valid(s.range_diff_win)
       and vim.api.nvim_get_current_win() == s.range_diff_win then
     range_diff_cursor_pending = false
-    vim.api.nvim_win_set_cursor(s.range_diff_win, { find_first_content_line(), 0 })
+    local row = find_first_content_line()
+    vim.api.nvim_win_set_cursor(s.range_diff_win, { row, right_sha_col_for_row(row) })
   end
 
   M.populate_files_pane(tip_idx)
@@ -1119,7 +1136,10 @@ function M.setup_keymaps()
     end,
   })
 
-  -- ── WinEnter: range-diff → position cursor at first commit ──
+  -- ── WinEnter: range-diff → position cursor at right SHA column ──
+  -- On initial load (range_diff_cursor_pending) also jump to the first commit row.
+  -- On every subsequent entry (e.g. Ctrl+W navigation) keep the current row but
+  -- move the column to the right-side SHA (second commit column).
   -- WinEnter fires reliably on every window focus change (unlike BufEnter which
   -- may not fire when switching to a window whose buffer is already current).
   -- Uses a named augroup so it can be cleared in close_layout().
@@ -1128,18 +1148,23 @@ function M.setup_keymaps()
     group = aug,
     callback = function()
       local cs = state()
-      if range_diff_cursor_pending
-          and cs.range_diff_win
+      if not (cs.range_diff_win
           and vim.api.nvim_win_is_valid(cs.range_diff_win)
-          and vim.api.nvim_get_current_win() == cs.range_diff_win then
-        range_diff_cursor_pending = false
-        -- Schedule to ensure the terminal has rendered before we move the cursor
-        vim.schedule(function()
-          if vim.api.nvim_win_is_valid(cs.range_diff_win) then
-            vim.api.nvim_win_set_cursor(cs.range_diff_win, { find_first_content_line(), 0 })
-          end
-        end)
+          and vim.api.nvim_get_current_win() == cs.range_diff_win) then
+        return
       end
+      -- Schedule to ensure the terminal has rendered before we move the cursor
+      vim.schedule(function()
+        if not vim.api.nvim_win_is_valid(cs.range_diff_win) then return end
+        local row
+        if range_diff_cursor_pending then
+          range_diff_cursor_pending = false
+          row = find_first_content_line()
+        else
+          row = vim.api.nvim_win_get_cursor(cs.range_diff_win)[1]
+        end
+        vim.api.nvim_win_set_cursor(cs.range_diff_win, { row, right_sha_col_for_row(row) })
+      end)
     end,
   })
 
