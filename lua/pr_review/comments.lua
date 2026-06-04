@@ -50,38 +50,33 @@ end
 
 -- Check if any of the pre-filtered tip_comments apply to individual commit sha.
 -- tip_comments should already be filtered to the relevant tip.
--- tip_sha: the tip's full SHA, used to detect tip-level "remap" comments
---   (GitHub stamps commit_id = tip_sha for comments from the combined Files
---    changed view; these are remapped to whichever individual commit shows
---    the file).
--- files_set: set of file paths changed by commit sha (for remap).
+-- _is_files_changed comments are excluded: those belong to the files pane, not
+-- to any individual commit view. tip_sha and files_set are kept for compat.
 function M.has_comments_for_sha(sha, tip_comments, tip_sha, files_set)
   for _, c in ipairs(tip_comments) do
+    if c._is_files_changed then goto continue end
     local cid = c.commit_id or ''
-    -- Direct match: commit_id is this individual commit's SHA
     if cid:sub(1, #sha) == sha or sha:sub(1, #cid) == cid then
       return true
     end
-    -- Tip-level remap: commit_id is the tip SHA and this commit touches the file
-    if tip_sha and files_set then
-      local ts = tip_sha
-      if (cid:sub(1, #ts) == ts or ts:sub(1, #cid) == cid) and files_set[c.path] then
-        return true
-      end
-    end
+    ::continue::
   end
   return false
+end
+
+function M.clear_comments(buf)
+  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+  M.buf_comment_maps[buf] = {}
 end
 
 -- Attach inline comments to a diff buffer as virtual text indicators.
 -- Comments are grouped by file+line and shown as extmarks.
 -- Stores line->comments mapping in M.buf_comment_maps[buf].
--- tip_sha: the full SHA of the tip currently being reviewed. Only comments
---   pre-assigned to this tip (_tip_sha == tip_sha) are considered. Comments
---   whose commit_id matches the tip SHA (rather than an individual commit) are
---   remapped to whichever individual commit shows their file in this diff.
--- sha: the individual commit SHA being shown (nil = file-view, include all
---   tip comments that match the files visible in the diff)
+-- sha: the individual commit SHA being shown. When non-nil (commit view),
+--   only comments with a direct commit_id match and _is_files_changed=false
+--   are shown. When nil (file view), only _is_files_changed comments whose
+--   path is visible in the diff are shown.
+-- tip_sha: full SHA of the tip; used to filter to this tip's comments.
 function M.attach_comments(buf, sha, all_comments, tip_sha, _file_hint)
   vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
   M.buf_comment_maps[buf] = {}
@@ -95,7 +90,6 @@ function M.attach_comments(buf, sha, all_comments, tip_sha, _file_hint)
     files_in_diff[path] = true
   end
 
-  local ts = tip_sha or ''
   local commit_comments = {}
   for _, comment in ipairs(all_comments) do
     -- Only consider comments pre-assigned to this tip
@@ -104,14 +98,12 @@ function M.attach_comments(buf, sha, all_comments, tip_sha, _file_hint)
     local path = comment.path or ''
     local include = false
     if sha then
-      -- Commit view: direct SHA match or tip-level remap
+      -- Commit view: only direct SHA match, never files-changed comments
       local matches_sha = (cid:sub(1, #sha) == sha or sha:sub(1, #cid) == cid)
-      local tip_remap = (ts ~= '' and (cid:sub(1, #ts) == ts or ts:sub(1, #cid) == cid)
-                         and files_in_diff[path])
-      include = matches_sha or tip_remap
+      include = (not comment._is_files_changed) and matches_sha
     else
-      -- File view: include all comments for this tip whose file is in the diff
-      include = files_in_diff[path]
+      -- File view: only files-changed comments whose path is in the diff
+      include = (comment._is_files_changed == true) and files_in_diff[path]
     end
     if include then
       table.insert(commit_comments, comment)
@@ -121,14 +113,15 @@ function M.attach_comments(buf, sha, all_comments, tip_sha, _file_hint)
   if #commit_comments == 0 then return end
 
   -- Group comments by file:line
-  local groups = {}  -- "file\0line" -> {file, line, comments=[]}
+  local groups = {}  -- "file\0line" -> {file, line, outdated, comments=[]}
   for _, comment in ipairs(commit_comments) do
     local path = comment.path or ''
-    local line_nr = comment.line or comment.original_line
+    local line_nr = tonumber(comment.line) or tonumber(comment.original_line)
+    local is_outdated = (tonumber(comment.line) == nil and tonumber(comment.original_line) ~= nil)
     if path ~= '' and line_nr then
       local key = path .. '\0' .. tostring(line_nr)
       if not groups[key] then
-        groups[key] = { file = path, line = line_nr, comments = {} }
+        groups[key] = { file = path, line = line_nr, outdated = is_outdated, comments = {} }
       end
       table.insert(groups[key].comments, comment)
     end
@@ -141,7 +134,8 @@ function M.attach_comments(buf, sha, all_comments, tip_sha, _file_hint)
       local buf_line = file_map[group.line]
       if buf_line then
         local count = #group.comments
-        local label = string.format(' 💬 %d comment%s', count, count > 1 and 's' or '')
+        local outdated_suffix = group.outdated and ' (outdated)' or ''
+        local label = string.format(' 💬 %d comment%s%s', count, count > 1 and 's' or '', outdated_suffix)
         vim.api.nvim_buf_set_extmark(buf, ns_id, buf_line - 1, 0, {
           virt_text = { { label, 'DiagnosticInfo' } },
           virt_text_pos = 'eol',

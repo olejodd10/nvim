@@ -30,12 +30,18 @@ M.state = {
   tips_win = nil,
   range_diff_buf = nil,
   range_diff_win = nil,
+  range_diff_chan = nil,   -- terminal channel for ANSI rendering
+  range_diff_lines = {},   -- stripped lines for logic/navigation
   files_buf = nil,
   files_win = nil,
   diff_buf = nil,
   diff_win = nil,
   log_buf = nil,
   log_win = nil,
+  comments_buf = nil,
+  comments_win = nil,
+  comment_threads = {},  -- [{path, line, tip_sha, is_files_changed, comments=[]}]
+  comments_lines = {},   -- 1-indexed line → thread index
 
   -- files pane: 1-indexed line → {status, path}
   files_lines = {},

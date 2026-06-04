@@ -9,110 +9,47 @@ local function state()
 end
 
 -- ─────────────────────────────────────────────────────────
--- ANSI color passthrough
--- Map git range-diff color codes to nvim highlight groups.
--- The base color (31/32/33/36/2) is matched even inside compound
--- codes like "1;32" (bold green) so we handle any combination.
+-- ANSI passthrough via terminal emulation
+-- range-diff content is rendered in a terminal buffer using
+-- nvim_open_term so Neovim's built-in terminal emulator handles
+-- all ANSI codes (reverse video, bold, compound codes, etc.) exactly
+-- as a real terminal would.  No manual colour-map needed.
 -- ─────────────────────────────────────────────────────────
 
-local ansi_color_map = {
-  ['31'] = 'DiffDelete',  -- red   → deleted / removed inner-diff lines
-  ['32'] = 'DiffAdd',     -- green → new commits / added inner-diff lines
-  ['33'] = 'DiffChange',  -- yellow → changed commits (!)
-  ['36'] = 'DiffText',    -- cyan  → inner-diff @@ hunk headers
-  ['2']  = 'Comment',     -- dim   → unchanged commits (=)
-}
-
--- Parse one line: return clean text (ANSI stripped) and a list of
--- highlight segments { col_start, col_end, hl_group } (0-based bytes).
-local function parse_ansi_line(line)
-  local clean = {}
-  local segs  = {}
-  local cur_hl, hl_start = nil, 0
-  local col = 0
-  local i = 1
-
-  while i <= #line do
-    -- ESC [ … <letter>  — any CSI sequence
-    if line:byte(i) == 27 and line:byte(i + 1) == 91 then
-      -- Find the terminating letter (first [A-Za-z] after ESC [)
-      local j = i + 2
-      while j <= #line do
-        local b = line:byte(j)
-        if (b >= 65 and b <= 90) or (b >= 97 and b <= 122) then break end
-        j = j + 1
-      end
-      if j <= #line then
-        if line:byte(j) == string.byte('m') then   -- SGR sequence
-          local code = line:sub(i + 2, j - 1)
-          local new_hl
-          if code == '' or code == '0' then
-            new_hl = nil  -- reset
-          else
-            -- Exact match first, then split on ';' for compound codes
-            new_hl = ansi_color_map[code]
-            if not new_hl then
-              for part in code:gmatch('[^;]+') do
-                new_hl = ansi_color_map[part]
-                if new_hl then break end
-              end
-            end
-          end
-          if new_hl ~= cur_hl then
-            if cur_hl and col > hl_start then
-              segs[#segs + 1] = { hl_start, col, cur_hl }
-            end
-            cur_hl   = new_hl
-            hl_start = col
-          end
-        end
-        -- skip past any other CSI sequence (e.g. \033[K) without emitting text
-        i = j + 1
-      else
-        i = i + 1
-      end
-    else
-      clean[#clean + 1] = line:sub(i, i)
-      col = col + 1
-      i   = i + 1
-    end
-  end
-
-  if cur_hl and col > hl_start then
-    segs[#segs + 1] = { hl_start, col, cur_hl }
-  end
-
-  return table.concat(clean), segs
+-- Strip ANSI escape sequences from a line (used for logic/search, not display).
+local function strip_ansi(line)
+  return (line:gsub('\027%[[^m]*m', ''))
 end
 
-local ansi_ns = vim.api.nvim_create_namespace('pr_review_ansi')
+-- Monotonic counter so each terminal buffer gets a unique name and never
+-- collides with an outgoing buffer that hasn't been wiped yet.
+local _rd_seq = 0
 
--- Write ANSI-colored lines into buf: strips escape codes, then re-applies
--- them as extmarks so the user sees git's own color choices.
-local function set_ansi_lines(buf, raw_lines)
-  local clean_lines = {}
-  local all_segs    = {}
-
-  for i, raw in ipairs(raw_lines) do
-    local clean, segs = parse_ansi_line(raw)
-    clean_lines[i] = clean
-    for _, seg in ipairs(segs) do
-      all_segs[#all_segs + 1] = { i - 1, seg[1], seg[2], seg[3] }  -- 0-based line
-    end
+-- Create a fresh terminal buffer for the range-diff pane, display it in `win`,
+-- and stream `raw_lines` (with ANSI) into it.  Neovim's built-in terminal
+-- emulator renders all escape codes natively.
+-- Returns (buf, chan).
+local function create_rd_term_buf(pr_number, win, raw_lines)
+  _rd_seq = _rd_seq + 1
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = 'wipe'
+  -- Put in window BEFORE nvim_open_term (terminal needs the window for sizing).
+  -- This also triggers bufhidden=wipe on the outgoing buffer, freeing its name.
+  vim.api.nvim_win_set_buf(win, buf)
+  -- Name after the window swap so the outgoing buffer's name is already freed.
+  pcall(vim.api.nvim_buf_set_name, buf,
+    string.format('PR#%d//range-diff[%d]', pr_number, _rd_seq))
+  local chan = vim.api.nvim_open_term(buf, {})
+  -- Terminal buffers normally auto-enter insert mode; suppress that.
+  vim.api.nvim_create_autocmd('TermOpen', {
+    buffer = buf, once = true,
+    callback = function() vim.cmd('stopinsert') end,
+  })
+  if raw_lines and #raw_lines > 0 then
+    -- CR+LF required for terminal line endings
+    vim.api.nvim_chan_send(chan, table.concat(raw_lines, '\r\n'))
   end
-
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, clean_lines)
-  vim.bo[buf].modifiable = false
-
-  vim.api.nvim_buf_clear_namespace(buf, ansi_ns, 0, -1)
-  for _, s in ipairs(all_segs) do
-    vim.api.nvim_buf_set_extmark(buf, ansi_ns, s[1], s[2], {
-      end_col  = s[3],
-      hl_group = s[4],
-      priority = 100,
-    })
-  end
+  return buf, chan
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -184,18 +121,21 @@ end
 
 function M.close_layout()
   local s = state()
-  for _, win in ipairs({ s.tips_win, s.range_diff_win, s.files_win, s.diff_win, s.log_win }) do
+  -- Clear the WinEnter augroup so stale autocmds don't fire after close
+  vim.api.nvim_create_augroup('pr_review_winenter', { clear = true })
+  for _, win in ipairs({ s.tips_win, s.range_diff_win, s.files_win, s.diff_win, s.log_win, s.comments_win }) do
     if win and vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
     end
   end
-  for _, buf in ipairs({ s.tips_buf, s.range_diff_buf, s.files_buf, s.diff_buf, s.log_buf }) do
+  for _, buf in ipairs({ s.tips_buf, s.range_diff_buf, s.files_buf, s.diff_buf, s.log_buf, s.comments_buf }) do
     if buf and vim.api.nvim_buf_is_valid(buf) then
       vim.api.nvim_buf_delete(buf, { force = true })
     end
   end
   s.tips_win = nil; s.range_diff_win = nil; s.files_win = nil; s.diff_win = nil; s.log_win = nil
   s.tips_buf = nil; s.range_diff_buf = nil; s.files_buf = nil; s.diff_buf = nil; s.log_buf = nil
+  s.comments_win = nil; s.comments_buf = nil
 end
 
 local function make_buf(name, ft)
@@ -215,13 +155,14 @@ function M.setup_layout()
   -- Open a new tab for the review
   vim.cmd('tabnew')
 
-  -- Create the five buffers
+  -- Create the six buffers
   local pr = s.pr_number
-  s.diff_buf       = make_buf(string.format('PR#%d//diff', pr), 'diff')
+  s.diff_buf       = make_buf(string.format('PR#%d//detail', pr), 'diff')
   s.range_diff_buf = make_buf(string.format('PR#%d//range-diff', pr), '')
   s.files_buf      = make_buf(string.format('PR#%d//files', pr))
   s.tips_buf       = make_buf(string.format('PR#%d//tips', pr))
   s.log_buf        = make_buf(string.format('PR#%d//log', pr))
+  s.comments_buf   = make_buf(string.format('PR#%d//comments', pr))
 
   -- Step 1: create three full-height columns via vertical splits.
   -- Starting window becomes diff (rightmost).
@@ -237,10 +178,13 @@ function M.setup_layout()
   local left_win = vim.api.nvim_get_current_win()
 
   -- Step 2: split each column horizontally.
-  -- Left column → tips (top 20%) + log (bottom 80%)
+  -- Left column → tips (top 15%) + comments (middle 35%) + log (bottom)
   vim.api.nvim_set_current_win(left_win)
   s.tips_win = left_win
   vim.api.nvim_win_set_buf(s.tips_win, s.tips_buf)
+  vim.cmd('belowright split')
+  s.comments_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(s.comments_win, s.comments_buf)
   vim.cmd('belowright split')
   s.log_win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(s.log_win, s.log_buf)
@@ -259,16 +203,22 @@ function M.setup_layout()
   vim.api.nvim_win_set_width(s.range_diff_win, math.floor(total_cols * 0.30))
 
   local usable_lines = vim.o.lines - 3
-  vim.api.nvim_win_set_height(s.tips_win, math.floor(usable_lines * 0.20))
+  vim.api.nvim_win_set_height(s.tips_win, math.floor(usable_lines * 0.15))
+  vim.api.nvim_win_set_height(s.comments_win, math.floor(usable_lines * 0.35))
   vim.api.nvim_win_set_height(s.range_diff_win, math.floor(usable_lines * 0.65))
 
   -- Window options on all panes
-  for _, win in ipairs({ s.tips_win, s.range_diff_win, s.files_win, s.diff_win, s.log_win }) do
+  for _, win in ipairs({ s.tips_win, s.range_diff_win, s.files_win, s.diff_win, s.log_win, s.comments_win }) do
     vim.wo[win].wrap = true
     vim.wo[win].number = true
     vim.wo[win].relativenumber = true
     vim.wo[win].signcolumn = 'no'
     vim.wo[win].cursorline = true
+  end
+
+  -- Disable colorcolumn in all panes except the detail/diff pane (let global settings apply there)
+  for _, win in ipairs({ s.tips_win, s.range_diff_win, s.files_win, s.log_win, s.comments_win }) do
+    vim.wo[win].colorcolumn = ''
   end
 
   vim.api.nvim_set_current_win(s.tips_win)
@@ -288,27 +238,38 @@ local function assign_comments_to_tips(comments, tips, head_sha)
   for _, c in ipairs(comments) do
     local cid = c.commit_id or ''
     local owner = nil
+    local is_files_changed = false
 
-    -- 1. Prefix match against tip SHAs (handles both full and abbreviated)
+    -- 1. Prefix match against tip SHAs
     for _, tip in ipairs(tips) do
       local min_len = math.min(#cid, #tip.sha)
       if min_len >= 7 and cid:sub(1, min_len) == tip.sha:sub(1, min_len) then
         owner = tip.sha
+        -- Mark as "files changed" only when the path is NOT in the tip commit's
+        -- own diff. If the path IS touched by the tip commit, commit_id = tip SHA
+        -- is ambiguous (could be from "Files Changed" OR from reviewing the tip
+        -- commit directly on the Commits tab) — default to commit-specific so
+        -- that tip-targeted reviews appear alongside that commit.
+        local path = c.path or ''
+        local tip_files = api.files_in_commit(tip.sha)
+        is_files_changed = (path ~= '' and not tip_files[path])
         break
       end
     end
 
-    -- 2. Ancestry check for individual commit SHAs, newest tip first
+    -- 2. Ancestry check for individual commit SHAs → commit-specific comment
     if not owner and #cid >= 7 then
       for i = #tips, 1, -1 do
         if api.is_ancestor(cid, tips[i].sha) then
           owner = tips[i].sha
+          is_files_changed = false
           break
         end
       end
     end
 
     c._tip_sha = owner or head_sha
+    c._is_files_changed = is_files_changed
   end
 end
 
@@ -396,40 +357,216 @@ function M.populate_log()
   local lines = {}
   s.log_line_entries = {}
 
-  local function add(entry, text)
-    table.insert(lines, text)
-    s.log_line_entries[#lines] = entry
-  end
-
   if #entries == 0 then
     table.insert(lines, '  (no reviews or comments)')
   else
-    for i, entry in ipairs(entries) do
+    for _, entry in ipairs(entries) do
       local date = (entry.at or ''):sub(1, 16):gsub('T', ' ')
       local state_tag = (entry.state and entry.state ~= '' and entry.state ~= 'COMMENTED')
                         and ('  [' .. entry.state .. ']') or ''
-      -- Header line
-      add(entry, string.format('%s %s @%s%s', date, entry.icon, entry.user, state_tag))
-      -- Full body, each line indented
-      local body = ''
-      if type(entry.body) == 'string' then
-          body = vim.trim(entry.body:gsub('\r\n', '\n'):gsub('\r', '\n'))
-      end
-      if body ~= '' then
-        for body_line in (body .. '\n'):gmatch('([^\n]*)\n') do
-          add(entry, '  ' .. body_line)
-        end
-      end
-      -- Horizontal rule separator between entries
-      if i < #entries then
-        table.insert(lines, string.rep('─', 40))
-      end
+      table.insert(lines, string.format('%s %s @%s%s', date, entry.icon, entry.user, state_tag))
+      s.log_line_entries[#lines] = entry
     end
   end
 
   vim.bo[s.log_buf].modifiable = true
   vim.api.nvim_buf_set_lines(s.log_buf, 0, -1, false, lines)
   vim.bo[s.log_buf].modifiable = false
+end
+
+-- ─────────────────────────────────────────────────────────
+-- Populate comments pane (threaded PR inline code review comments)
+-- ─────────────────────────────────────────────────────────
+
+local function set_detail_content(lines, ft)
+  local s = state()
+  comments_mod.clear_comments(s.diff_buf)
+  vim.bo[s.diff_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(s.diff_buf, 0, -1, false, lines)
+  vim.bo[s.diff_buf].modifiable = false
+  if ft ~= nil then
+    vim.bo[s.diff_buf].filetype = ft
+  end
+  if vim.api.nvim_win_is_valid(s.diff_win) then
+    vim.api.nvim_win_set_cursor(s.diff_win, { 1, 0 })
+  end
+end
+
+function M.populate_comments_pane()
+  local s = state()
+  if not s.comments_buf or not vim.api.nvim_buf_is_valid(s.comments_buf) then return end
+
+  -- Build threads from all_comments (sort by created_at first for stability)
+  local sorted = {}
+  for _, c in ipairs(s.all_comments) do table.insert(sorted, c) end
+  table.sort(sorted, function(a, b) return (a.created_at or '') < (b.created_at or '') end)
+
+  local threads = {}
+  local id_to_thread_idx = {}
+
+  -- First pass: root comments
+  for _, c in ipairs(sorted) do
+    if not c.in_reply_to_id then
+      table.insert(threads, {
+        path = c.path,
+        line = tonumber(c.line) or tonumber(c.original_line),
+        is_outdated = (tonumber(c.line) == nil and tonumber(c.original_line) ~= nil),
+        tip_sha = c._tip_sha,
+        is_files_changed = c._is_files_changed,
+        comments = { c },
+      })
+      id_to_thread_idx[c.id] = #threads
+    end
+  end
+
+  -- Second pass: replies
+  for _, c in ipairs(sorted) do
+    if c.in_reply_to_id then
+      local ti = id_to_thread_idx[c.in_reply_to_id]
+      if ti then
+        table.insert(threads[ti].comments, c)
+        id_to_thread_idx[c.id] = ti
+      else
+        -- Orphan reply: start its own thread
+        table.insert(threads, {
+          path = c.path,
+          line = tonumber(c.line) or tonumber(c.original_line),
+          is_outdated = (tonumber(c.line) == nil and tonumber(c.original_line) ~= nil),
+          tip_sha = c._tip_sha,
+          is_files_changed = c._is_files_changed,
+          comments = { c },
+        })
+        id_to_thread_idx[c.id] = #threads
+      end
+    end
+  end
+
+  s.comment_threads = threads
+
+  -- Find tip index for a SHA
+  local function tip_idx_for_sha(sha)
+    for i, tip in ipairs(s.tips) do
+      if tip.sha == sha then return i end
+    end
+    return nil
+  end
+
+  local lines = {}
+  s.comments_lines = {}
+
+  if #threads == 0 then
+    table.insert(lines, '  (no code review comments)')
+  else
+    for i, thread in ipairs(threads) do
+      local tip_i = tip_idx_for_sha(thread.tip_sha)
+      local tip_tag = tip_i and string.format('[%d] ', tip_i) or ''
+      local author = (thread.comments[1].user and thread.comments[1].user.login) or '?'
+      local short_path = ''
+      if thread.path then
+        local outdated_tag = thread.is_outdated and '⚠ ' or ''
+        short_path = outdated_tag
+                     .. (thread.path:match('([^/]+)$') or thread.path)
+                     .. (thread.line and (':' .. thread.line) or '')
+                     .. '  '
+      end
+      local body_preview = vim.trim((thread.comments[1].body or ''):gsub('\r?\n', ' ')):sub(1, 50)
+      local reply_tag = #thread.comments > 1 and string.format(' [+%d]', #thread.comments - 1) or ''
+      table.insert(lines, string.format('%s@%s  %s%s%s', tip_tag, author, short_path, body_preview, reply_tag))
+      s.comments_lines[#lines] = i
+    end
+  end
+
+  vim.bo[s.comments_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(s.comments_buf, 0, -1, false, lines)
+  vim.bo[s.comments_buf].modifiable = false
+end
+
+function M.update_detail_pane_for_log()
+  local s = state()
+  if not s.diff_buf or not vim.api.nvim_buf_is_valid(s.diff_buf) then return end
+  if not s.log_win or not vim.api.nvim_win_is_valid(s.log_win) then return end
+
+  local row = vim.api.nvim_win_get_cursor(s.log_win)[1]
+  local entry = s.log_line_entries[row]
+  if not entry then return end
+
+  local content_key = 'log:' .. (entry.at or '') .. ':' .. (entry.user or '') .. ':' .. row
+  if content_key == last_diff_key then return end
+  last_diff_key = content_key
+
+  local lines = {}
+  local date = (entry.at or ''):sub(1, 16):gsub('T', ' ')
+  local state_tag = (entry.state and entry.state ~= '' and entry.state ~= 'COMMENTED')
+                    and ('  [' .. entry.state .. ']') or ''
+  table.insert(lines, string.format('%s  %s  @%s%s', date, entry.icon, entry.user, state_tag))
+  if entry.html_url then
+    table.insert(lines, entry.html_url)
+  end
+  table.insert(lines, string.rep('─', 60))
+  table.insert(lines, '')
+
+  local body = ''
+  if type(entry.body) == 'string' then
+    body = vim.trim(entry.body:gsub('\r\n', '\n'):gsub('\r', '\n'))
+  end
+  if body ~= '' then
+    for body_line in (body .. '\n'):gmatch('([^\n]*)\n') do
+      table.insert(lines, body_line)
+    end
+  else
+    table.insert(lines, '(no body)')
+  end
+
+  set_detail_content(lines, 'markdown')
+end
+
+function M.update_detail_pane_for_comment()
+  local s = state()
+  if not s.diff_buf or not vim.api.nvim_buf_is_valid(s.diff_buf) then return end
+  if not s.comments_win or not vim.api.nvim_win_is_valid(s.comments_win) then return end
+
+  local row = vim.api.nvim_win_get_cursor(s.comments_win)[1]
+  local thread_idx = s.comments_lines[row]
+  if not thread_idx then return end
+
+  local content_key = 'comment:' .. thread_idx
+  if content_key == last_diff_key then return end
+  last_diff_key = content_key
+
+  local thread = s.comment_threads[thread_idx]
+  if not thread then return end
+
+  local lines = {}
+  local path_info = thread.path
+    and (thread.path .. (thread.line and (':' .. thread.line) or ''))
+    or '(unknown file)'
+  local tip_i = nil
+  for i, tip in ipairs(s.tips) do
+    if tip.sha == thread.tip_sha then tip_i = i; break end
+  end
+  local tip_tag = tip_i and ('Tip [' .. tip_i .. ']  ') or ''
+  local fc_tag = thread.is_files_changed and 'Files Changed' or 'Commit'
+  local outdated_tag = thread.is_outdated and '  ⚠ outdated' or ''
+  table.insert(lines, string.format('%s%s  —  %s%s', tip_tag, fc_tag, path_info, outdated_tag))
+  table.insert(lines, string.rep('─', 60))
+  table.insert(lines, '')
+
+  for i, comment in ipairs(thread.comments) do
+    if i > 1 then
+      table.insert(lines, '')
+      table.insert(lines, string.rep('┄', 40))
+      table.insert(lines, '')
+    end
+    local author = (comment.user and comment.user.login) or 'unknown'
+    local date = (comment.created_at or ''):gsub('T', ' '):gsub('Z', ' UTC')
+    table.insert(lines, string.format('@%s  ·  %s', author, date))
+    table.insert(lines, '')
+    for body_line in (comment.body or ''):gmatch('[^\n]*') do
+      table.insert(lines, body_line)
+    end
+  end
+
+  set_detail_content(lines, 'markdown')
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -461,9 +598,17 @@ function M.populate_files_pane(tip_idx)
     if #files == 0 then
       table.insert(lines, '  (no changed files)')
     else
+      -- Build set of files with comments for this tip (files-changed view only)
+      local files_with_comments = {}
+      for _, c in ipairs(s.all_comments) do
+        if c._tip_sha == tip.sha and c.path and c._is_files_changed then
+          files_with_comments[c.path] = true
+        end
+      end
       for i, f in ipairs(files) do
         s.files_lines[i] = { status = f.status, path = f.path, base = base, tip_sha = tip.sha }
-        table.insert(lines, string.format('%s  %s', f.status, f.path))
+        local comment_icon = files_with_comments[f.path] and ' 💬' or ''
+        table.insert(lines, string.format('%s  %s%s', f.status, f.path, comment_icon))
       end
     end
   end
@@ -486,20 +631,12 @@ function M.update_diff_pane_for_file()
   last_diff_key = content_key
 
   local lines = api.diff_file(entry.base, entry.tip_sha, entry.path)
-  vim.bo[s.diff_buf].modifiable = true
-  vim.api.nvim_buf_set_lines(s.diff_buf, 0, -1, false, lines)
-  vim.bo[s.diff_buf].modifiable = false
-  comments_mod.buf_comment_maps[s.diff_buf] = {}
+  set_detail_content(lines, 'diff')
 
-  -- Attach comments for this file across all commits of the current tip
   if #s.all_comments > 0 then
     local tip = s.tips[s.current_tip_idx]
     local tip_sha = tip and tip.sha or s.head_sha
     comments_mod.attach_comments(s.diff_buf, nil, s.all_comments, tip_sha, entry.path)
-  end
-
-  if vim.api.nvim_win_is_valid(s.diff_win) then
-    vim.api.nvim_win_set_cursor(s.diff_win, { 1, 0 })
   end
 end
 
@@ -519,7 +656,7 @@ local function annotate_range_diff_comments(buf, all_comments, current_tip_sha)
   end
   if #tip_comments == 0 then return end
 
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local lines = state().range_diff_lines or {}
   for i, line in ipairs(lines) do
     local sha
     local entry = parse_meta_line(line)
@@ -543,28 +680,51 @@ local function annotate_range_diff_comments(buf, all_comments, current_tip_sha)
   end
 end
 
--- Last content key shown in the diff pane (to avoid redundant redraws)
-local last_diff_key = nil
+-- Buffer-local keymaps for range-diff terminal buffers.
+-- Called on each new terminal buffer since the buffer is recreated per tip.
+local function setup_rd_buf_keymaps(buf)
+  local o = { noremap = true, silent = true }
+  vim.keymap.set('n', 'q', function() M.close_layout() end,
+    vim.tbl_extend('force', o, { buffer = buf, desc = 'PR review: close' }))
+  vim.keymap.set('n', '<leader>gx', function()
+    local url = M.get_browse_url()
+    if not url then
+      vim.notify('pr_review: nothing to browse', vim.log.levels.WARN)
+      return
+    end
+    vim.ui.open(url)
+  end, vim.tbl_extend('force', o, { buffer = buf, desc = 'PR review: open in GitHub' }))
+  vim.keymap.set('n', '<CR>', function()
+    vim.api.nvim_set_current_win(state().diff_win)
+  end, vim.tbl_extend('force', o, { buffer = buf, desc = 'PR review: go to diff' }))
+  vim.api.nvim_create_autocmd('CursorMoved', {
+    buffer = buf,
+    callback = function() M.update_diff_pane() end,
+  })
+end
+
+
+local range_diff_cursor_pending = false
+
+local function find_first_content_line()
+  local s = state()
+  local lines = s.range_diff_lines or {}
+  for i, line in ipairs(lines) do
+    if parse_meta_line(line) then return i end
+    local sha = line:match('^%s*([0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]+)%s')
+    if sha then return i end
+  end
+  return 1
+end
 
 function M.update_range_diff(tip_idx)
   local s = state()
   s.current_tip_idx = tip_idx
+  s.range_diff_lines = {}  -- clear while computing
   last_diff_key = nil  -- force diff pane refresh
 
   local tip = s.tips[tip_idx]
   if not tip then return end
-
-  local function set_range_diff_lines(raw_lines)
-    set_ansi_lines(s.range_diff_buf, raw_lines)
-  end
-
-  local function set_plain_lines(lines)
-    vim.bo[s.range_diff_buf].modifiable = true
-    vim.api.nvim_buf_set_lines(s.range_diff_buf, 0, -1, false, lines)
-    vim.bo[s.range_diff_buf].modifiable = false
-  end
-
-  set_plain_lines({ '  Loading…' })
 
   -- Resolve merge-base via GitHub API (cached); this matches exactly what GitHub shows
   if not s.merge_base_cache[tip.sha] then
@@ -575,19 +735,15 @@ function M.update_range_diff(tip_idx)
   end
   local base = s.merge_base_cache[tip.sha]
 
+  local raw_lines
   if not base then
-    set_plain_lines({
+    raw_lines = {
       '  Error: could not find merge-base for ' .. tip.short_sha,
       '  (GitHub API call failed — check gh auth status)',
-    })
-    return
-  end
-
-  local prev_tip = s.tips[tip_idx - 1]
-  local lines
-
-  if prev_tip then
-    -- Range diff between previous version and selected tip
+    }
+  elseif s.tips[tip_idx - 1] then
+    -- Range diff between previous tip and selected tip
+    local prev_tip = s.tips[tip_idx - 1]
     local cache_key = prev_tip.sha .. ':' .. tip.sha
     if not s.range_diff_cache[cache_key] then
       api.ensure_sha_available(prev_tip.sha, s.pr_remote)
@@ -596,26 +752,41 @@ function M.update_range_diff(tip_idx)
       s.range_diff_cache[cache_key] = result
         or { '  Error running git range-diff', '', '  Are both SHAs available locally?' }
     end
-    lines = s.range_diff_cache[cache_key]
+    raw_lines = s.range_diff_cache[cache_key]
   else
     -- Initial tip: show commits in range (no previous to compare against)
     local header = string.format(
-      '  Initial version %s — no previous tip for range-diff',
+      '  Initial tip %s — no previous tip for range-diff',
       tip.short_sha
     )
     local commit_lines = api.log_range(base, tip.sha)
     if #commit_lines == 0 then
       commit_lines = { '  (no commits in range ' .. base:sub(1, 7) .. '..' .. tip.short_sha .. ')' }
     end
-    lines = { header, '' }
-    vim.list_extend(lines, commit_lines)
+    raw_lines = { header, '' }
+    vim.list_extend(raw_lines, commit_lines)
   end
 
-  set_range_diff_lines(lines)
+  -- Store stripped lines for all logic (cursor context, annotations, navigation)
+  s.range_diff_lines = vim.tbl_map(strip_ansi, raw_lines)
+
+  -- Display in a fresh terminal buffer for native ANSI rendering.
+  -- nvim_win_set_buf (inside create_rd_term_buf) will trigger bufhidden=wipe
+  -- on the outgoing buffer, so no explicit delete needed here.
+  s.range_diff_buf, s.range_diff_chan = create_rd_term_buf(
+    s.pr_number, s.range_diff_win, raw_lines)
+  setup_rd_buf_keymaps(s.range_diff_buf)
+
+  -- Annotate comment icons on the new buffer (reads s.range_diff_lines)
   annotate_range_diff_comments(s.range_diff_buf, s.all_comments, tip.sha)
 
-  if vim.api.nvim_win_is_valid(s.range_diff_win) then
-    vim.api.nvim_win_set_cursor(s.range_diff_win, { 1, 0 })
+  -- Mark cursor as needing reset on next entry into the range-diff window.
+  range_diff_cursor_pending = true
+  -- If the range-diff window is already focused, position the cursor immediately.
+  if vim.api.nvim_win_is_valid(s.range_diff_win)
+      and vim.api.nvim_get_current_win() == s.range_diff_win then
+    range_diff_cursor_pending = false
+    vim.api.nvim_win_set_cursor(s.range_diff_win, { find_first_content_line(), 0 })
   end
 
   M.populate_files_pane(tip_idx)
@@ -642,7 +813,7 @@ function M.get_range_diff_cursor_context()
   local cur_row = cursor[1]  -- 1-indexed
   local cur_col = cursor[2] + 1  -- 1-indexed
 
-  local lines = vim.api.nvim_buf_get_lines(s.range_diff_buf, 0, -1, false)
+  local lines = s.range_diff_lines or {}
   local line = lines[cur_row]
   if not line then return nil end
 
@@ -697,7 +868,7 @@ end
 -- Get the inner diff lines for a range-diff entry (strips 4-space indent)
 local function get_inner_diff_lines(meta_line_idx, entry)
   local s = state()
-  local lines = vim.api.nvim_buf_get_lines(s.range_diff_buf, 0, -1, false)
+  local lines = s.range_diff_lines or {}
   local result = {}
 
   -- Header showing the commit correspondence
@@ -787,23 +958,12 @@ function M.update_diff_pane()
   if content_key == last_diff_key then return end
   last_diff_key = content_key
 
-  vim.bo[s.diff_buf].modifiable = true
-  vim.api.nvim_buf_set_lines(s.diff_buf, 0, -1, false, lines)
-  vim.bo[s.diff_buf].modifiable = false
+  set_detail_content(lines, 'diff')
 
-  -- Attach comment indicators; only comments pre-assigned to the current tip
-  -- are considered. commit_id = tip_sha comments are remapped by file.
   if sha_for_comments and #s.all_comments > 0 then
     local current_tip = s.tips[s.current_tip_idx]
     local tip_sha = current_tip and current_tip.sha or s.head_sha
     comments_mod.attach_comments(s.diff_buf, sha_for_comments, s.all_comments, tip_sha)
-  else
-    comments_mod.buf_comment_maps[s.diff_buf] = {}
-  end
-
-  -- Reset cursor in diff window
-  if vim.api.nvim_win_is_valid(s.diff_win) then
-    vim.api.nvim_win_set_cursor(s.diff_win, { 1, 0 })
   end
 end
 
@@ -866,6 +1026,17 @@ function M.get_browse_url()
     end
     return s.pr_url
 
+  elseif cur_win == s.comments_win then
+    local row = vim.api.nvim_win_get_cursor(s.comments_win)[1]
+    local thread_idx = s.comments_lines[row]
+    if thread_idx then
+      local thread = s.comment_threads[thread_idx]
+      if thread and thread.comments[1] and thread.comments[1].html_url then
+        return thread.comments[1].html_url
+      end
+    end
+    return s.pr_url
+
   end
 
   return s.pr_url
@@ -877,7 +1048,9 @@ end
 
 function M.setup_keymaps()
   local s = state()
-  local bufs = { s.tips_buf, s.range_diff_buf, s.files_buf, s.diff_buf, s.log_buf }
+  -- range_diff_buf is excluded here — its keymaps are managed by setup_rd_buf_keymaps()
+  -- which is called on each new terminal buffer in update_range_diff().
+  local bufs = { s.tips_buf, s.files_buf, s.diff_buf, s.log_buf, s.comments_buf }
   local o = { noremap = true, silent = true }
 
   -- ── Close review ────────────────────────────────────────
@@ -901,6 +1074,10 @@ function M.setup_keymaps()
     end, vim.tbl_extend('force', o, { buffer = buf, desc = 'PR review: open in GitHub' }))
   end
 
+  -- Also apply range-diff keymaps to the initial (pre-terminal) range-diff buf.
+  -- They'll be re-applied to each new terminal buf in update_range_diff().
+  setup_rd_buf_keymaps(s.range_diff_buf)
+
   -- ── Comment popup (K) ─ in diff pane ───────────────────
   vim.keymap.set('n', 'K', function()
     local shown = comments_mod.show_popup(s.diff_buf)
@@ -918,14 +1095,6 @@ function M.setup_keymaps()
     end,
   })
 
-  -- ── CursorMoved: range-diff → update diff pane ──────────
-  vim.api.nvim_create_autocmd('CursorMoved', {
-    buffer = s.range_diff_buf,
-    callback = function()
-      M.update_diff_pane()
-    end,
-  })
-
   -- ── CursorMoved: files pane → update diff pane ──────────
   vim.api.nvim_create_autocmd('CursorMoved', {
     buffer = s.files_buf,
@@ -934,22 +1103,158 @@ function M.setup_keymaps()
     end,
   })
 
+  -- ── CursorMoved: log pane → update detail pane ──────────
+  vim.api.nvim_create_autocmd('CursorMoved', {
+    buffer = s.log_buf,
+    callback = function()
+      M.update_detail_pane_for_log()
+    end,
+  })
+
+  -- ── CursorMoved: comments pane → update detail pane ─────
+  vim.api.nvim_create_autocmd('CursorMoved', {
+    buffer = s.comments_buf,
+    callback = function()
+      M.update_detail_pane_for_comment()
+    end,
+  })
+
+  -- ── WinEnter: range-diff → position cursor at first commit ──
+  -- WinEnter fires reliably on every window focus change (unlike BufEnter which
+  -- may not fire when switching to a window whose buffer is already current).
+  -- Uses a named augroup so it can be cleared in close_layout().
+  local aug = vim.api.nvim_create_augroup('pr_review_winenter', { clear = true })
+  vim.api.nvim_create_autocmd('WinEnter', {
+    group = aug,
+    callback = function()
+      local cs = state()
+      if range_diff_cursor_pending
+          and cs.range_diff_win
+          and vim.api.nvim_win_is_valid(cs.range_diff_win)
+          and vim.api.nvim_get_current_win() == cs.range_diff_win then
+        range_diff_cursor_pending = false
+        -- Schedule to ensure the terminal has rendered before we move the cursor
+        vim.schedule(function()
+          if vim.api.nvim_win_is_valid(cs.range_diff_win) then
+            vim.api.nvim_win_set_cursor(cs.range_diff_win, { find_first_content_line(), 0 })
+          end
+        end)
+      end
+    end,
+  })
+
   -- ── Enter in tips: jump to range-diff pane ──────────────
   vim.keymap.set('n', '<CR>', function()
     vim.api.nvim_set_current_win(s.range_diff_win)
-    vim.api.nvim_win_set_cursor(s.range_diff_win, { 1, 0 })
   end, vim.tbl_extend('force', o, { buffer = s.tips_buf, desc = 'PR review: go to range-diff' }))
-
-  -- ── Enter in range-diff: jump to diff pane ──────────────
-  vim.keymap.set('n', '<CR>', function()
-    vim.api.nvim_set_current_win(s.diff_win)
-  end, vim.tbl_extend('force', o, { buffer = s.range_diff_buf, desc = 'PR review: go to diff' }))
 
   -- ── Enter in files pane: jump to diff pane ──────────────
   vim.keymap.set('n', '<CR>', function()
     M.update_diff_pane_for_file()
     vim.api.nvim_set_current_win(s.diff_win)
   end, vim.tbl_extend('force', o, { buffer = s.files_buf, desc = 'PR review: show file diff' }))
+
+  -- ── Enter in comments pane: jump to detail pane ─────────
+  vim.keymap.set('n', '<CR>', function()
+    M.update_detail_pane_for_comment()
+    vim.api.nvim_set_current_win(s.diff_win)
+  end, vim.tbl_extend('force', o, { buffer = s.comments_buf, desc = 'PR review: show comment thread' }))
+
+  -- ── Enter in log pane: jump to detail pane ──────────────
+  vim.keymap.set('n', '<CR>', function()
+    M.update_detail_pane_for_log()
+    vim.api.nvim_set_current_win(s.diff_win)
+  end, vim.tbl_extend('force', o, { buffer = s.log_buf, desc = 'PR review: show log entry' }))
+end
+
+-- ─────────────────────────────────────────────────────────
+-- PR picker (shown when :PRReview is called with no argument)
+-- ─────────────────────────────────────────────────────────
+
+function M.show_pr_picker()
+  if vim.fn.executable('gh') == 0 then
+    vim.notify('pr_review: GitHub CLI (gh) not found', vim.log.levels.ERROR)
+    return
+  end
+
+  local owner, repo = api.get_repo_info()
+  if not owner then
+    vim.notify('pr_review: cannot determine GitHub repo from current directory', vim.log.levels.ERROR)
+    return
+  end
+
+  vim.notify('pr_review: fetching open PRs…', vim.log.levels.INFO)
+  local prs = api.list_open_prs(owner, repo)
+  if #prs == 0 then
+    vim.notify('pr_review: no open PRs found', vim.log.levels.INFO)
+    return
+  end
+
+  -- Format lines and keep parallel number/url tables
+  local lines = {}
+  local pr_numbers = {}
+  local pr_urls = {}
+  for _, pr in ipairs(prs) do
+    local author = (pr.author and pr.author.login) or '?'
+    table.insert(lines, string.format('#%-5d  %-20s  %s', pr.number, '@' .. author, pr.title or ''))
+    table.insert(pr_numbers, pr.number)
+    table.insert(pr_urls, pr.url)
+  end
+
+  -- Floating picker window
+  local width  = math.min(100, vim.o.columns - 4)
+  local height = math.min(#lines, math.floor(vim.o.lines * 0.7))
+  local row    = math.floor((vim.o.lines - height) / 2)
+  local col    = math.floor((vim.o.columns - width) / 2)
+
+  local picker_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[picker_buf].buftype    = 'nofile'
+  vim.bo[picker_buf].bufhidden  = 'wipe'
+  vim.bo[picker_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(picker_buf, 0, -1, false, lines)
+  vim.bo[picker_buf].modifiable = false
+
+  local picker_win = vim.api.nvim_open_win(picker_buf, true, {
+    relative   = 'editor',
+    row        = row,
+    col        = col,
+    width      = width,
+    height     = height,
+    style      = 'minimal',
+    border     = 'rounded',
+    title      = string.format(' Open PRs — %s/%s  (<CR> open · q close) ', owner, repo),
+    title_pos  = 'center',
+  })
+  vim.wo[picker_win].cursorline = true
+  vim.wo[picker_win].number     = false
+
+  local o = { noremap = true, silent = true, buffer = picker_buf }
+
+  local function close()
+    if vim.api.nvim_win_is_valid(picker_win) then
+      vim.api.nvim_win_close(picker_win, true)
+    end
+  end
+
+  vim.keymap.set('n', '<CR>', function()
+    local idx = vim.api.nvim_win_get_cursor(picker_win)[1]
+    local pr_num = pr_numbers[idx]
+    close()
+    if pr_num then
+      M.open(pr_num)
+    end
+  end, o)
+
+  vim.keymap.set('n', '<leader>gx', function()
+    local idx = vim.api.nvim_win_get_cursor(picker_win)[1]
+    local url = pr_urls[idx]
+    if url then
+      vim.ui.open(url)
+    end
+  end, o)
+
+  vim.keymap.set('n', 'q',   close, o)
+  vim.keymap.set('n', '<Esc>', close, o)
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -959,6 +1264,12 @@ end
 function M.open(pr_number)
   if vim.fn.executable('gh') == 0 then
     vim.notify('pr_review: GitHub CLI (gh) not found', vim.log.levels.ERROR)
+    return
+  end
+
+  -- No PR number: show the interactive picker
+  if not pr_number then
+    M.show_pr_picker()
     return
   end
 
@@ -994,6 +1305,8 @@ function M.open(pr_number)
   s.merge_base_cache = {}
   s.log_line_entries = {}
   s.files_lines = {}
+  s.comment_threads = {}
+  s.comments_lines = {}
 
   vim.notify(string.format('pr_review: loading PR #%d "%s"…', pr.number, pr.title),
     vim.log.levels.INFO)
@@ -1080,6 +1393,7 @@ function M.open(pr_number)
   M.populate_tips()
   M.populate_log()
   M.setup_keymaps()
+  M.populate_comments_pane()
 
   -- Start cursor on the newest (bottom) tip and show its range-diff
   local newest_idx = #s.tips
@@ -1089,7 +1403,7 @@ function M.open(pr_number)
   M.update_range_diff(newest_idx)
 
   vim.notify(
-    string.format('pr_review: PR #%d loaded — %d version(s), %d comment(s)',
+    string.format('pr_review: PR #%d loaded — %d tip(s), %d comment(s)',
       s.pr_number, #s.tips, #s.all_comments),
     vim.log.levels.INFO
   )

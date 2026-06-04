@@ -220,6 +220,20 @@ function M.get_changed_files(base, tip)
   return result
 end
 
+-- List open PRs for the repo, sorted newest first (matches GitHub browser default).
+-- Returns [{number, title}]
+function M.list_open_prs(owner, repo)
+  local cmd = string.format(
+    "gh pr list --repo %s/%s --state open --limit 200 --json number,title,author,url 2>/dev/null",
+    owner, repo
+  )
+  local out, code = run(cmd)
+  if code ~= 0 then return {} end
+  local data = parse_json(out)
+  if not data or type(data) ~= 'table' then return {} end
+  return data
+end
+
 -- Return diff lines for a single file across base..tip.
 function M.diff_file(base, tip, path)
   local lines, code = run_list(
