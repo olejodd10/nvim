@@ -220,18 +220,65 @@ function M.get_changed_files(base, tip)
   return result
 end
 
--- List open PRs for the repo, sorted newest first (matches GitHub browser default).
--- Returns [{number, title}]
+-- List open PRs for the repo via GraphQL (needed for totalCommentsCount,
+-- which is not available in `gh pr list --json`).
+-- Returns [{number, title, author, url, createdAt, updatedAt, isDraft, state,
+--           labels, assignees, totalCommentsCount, statusCheckRollup}]
+-- with shapes compatible with the rest of the codebase.
 function M.list_open_prs(owner, repo)
-  local cmd = string.format(
-    "gh pr list --repo %s/%s --state open --limit 200 --json number,title,author,url 2>/dev/null",
+  local query = string.format(
+    '{ repository(owner: "%s", name: "%s") {'
+    .. ' pullRequests(first: 100, states: OPEN, orderBy: {field: UPDATED_AT, direction: DESC}) {'
+    .. ' nodes { number title url createdAt updatedAt isDraft state totalCommentsCount'
+    .. ' author { login }'
+    .. ' labels(first: 20) { nodes { name } }'
+    .. ' assignees(first: 10) { nodes { login } }'
+    .. ' commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }'
+    .. ' } } } }',
     owner, repo
   )
+  local cmd = 'gh api graphql -f query=' .. vim.fn.shellescape(query) .. ' 2>/dev/null'
   local out, code = run(cmd)
   if code ~= 0 then return {} end
   local data = parse_json(out)
-  if not data or type(data) ~= 'table' then return {} end
-  return data
+  local nodes = data
+    and data.data
+    and data.data.repository
+    and data.data.repository.pullRequests
+    and data.data.repository.pullRequests.nodes
+  if not nodes then return {} end
+
+  local result = {}
+  for _, node in ipairs(nodes) do
+    -- Flatten nested GraphQL connection types to simple arrays.
+    local labels    = (node.labels    and node.labels.nodes)    or {}
+    local assignees = (node.assignees and node.assignees.nodes) or {}
+
+    -- statusCheckRollup comes as a single {state} object; wrap in array so
+    -- rollup_symbol() can iterate it without changes.
+    local checks = {}
+    local cn = node.commits and node.commits.nodes and node.commits.nodes[1]
+    local rollup = cn and cn.commit and cn.commit.statusCheckRollup
+    if type(rollup) == 'table' then
+      table.insert(checks, { state = rollup.state })
+    end
+
+    table.insert(result, {
+      number             = node.number,
+      title              = node.title,
+      url                = node.url,
+      createdAt          = node.createdAt,
+      updatedAt          = node.updatedAt,
+      isDraft            = node.isDraft,
+      state              = node.state,
+      author             = node.author,
+      labels             = labels,
+      assignees          = assignees,
+      totalCommentsCount = node.totalCommentsCount or 0,
+      statusCheckRollup  = checks,
+    })
+  end
+  return result
 end
 
 -- Return diff lines for a single file across base..tip.

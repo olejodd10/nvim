@@ -116,6 +116,57 @@ local function sha_column_ranges(line, entry)
 end
 
 -- ─────────────────────────────────────────────────────────
+-- PR picker helpers
+-- ─────────────────────────────────────────────────────────
+
+-- Returns a human-readable "time ago" string from an ISO 8601 timestamp.
+local function time_ago(iso_str)
+  if not iso_str or iso_str == '' then return '' end
+  local y, mo, d, h, m, s = iso_str:match('(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)')
+  if not y then return '' end
+  -- os.time() has no UTC mode: it treats the table fields as local time.
+  -- GitHub timestamps are UTC, so we must correct for the local UTC offset.
+  local t_as_local = os.time({
+    year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+    hour = tonumber(h), min   = tonumber(m),  sec = tonumber(s),
+    isdst = false,
+  })
+  local now = os.time()
+  local utc_fields = os.date('!*t', now)
+  utc_fields.isdst = false
+  local utc_offset = now - os.time(utc_fields)  -- seconds east of UTC
+  local t    = t_as_local - utc_offset
+  local diff = os.difftime(now, t)
+  if diff < 60   then return 'just now'
+  elseif diff < 3600  then return math.floor(diff / 60)   .. 'm ago'
+  elseif diff < 86400 then return math.floor(diff / 3600) .. 'h ago'
+  end
+  local days = math.floor(diff / 86400)
+  if days == 1        then return '1d ago'
+  elseif days < 30    then return days                    .. 'd ago'
+  elseif days < 365   then return math.floor(days / 30)  .. 'mo ago'
+  else                     return math.floor(days / 365) .. 'y ago'
+  end
+end
+
+-- Reduces a statusCheckRollup array to a single symbol: ✓ / ✗ / ~ / -
+local function rollup_symbol(checks)
+  if not checks or type(checks) ~= 'table' or #checks == 0 then return '-' end
+  local has_fail, has_pending = false, false
+  for _, c in ipairs(checks) do
+    local s = ((c.state or c.conclusion or c.status or '')):upper()
+    if s == 'FAILURE' or s == 'ERROR' or s == 'FAILED' then
+      has_fail = true
+    elseif s == 'PENDING' or s == 'IN_PROGRESS' or s == 'QUEUED' or s == 'WAITING' then
+      has_pending = true
+    end
+  end
+  if has_fail    then return '✗' end
+  if has_pending then return '~' end
+  return '✓'
+end
+
+-- ─────────────────────────────────────────────────────────
 -- Layout management
 -- ─────────────────────────────────────────────────────────
 
@@ -1049,7 +1100,12 @@ function M.get_browse_url()
     if thread_idx then
       local thread = s.comment_threads[thread_idx]
       if thread and thread.comments[1] and thread.comments[1].html_url then
-        return thread.comments[1].html_url
+        local url = thread.comments[1].html_url
+        -- Use the Files-changed deep-link for inline review comments
+        if thread.is_files_changed then
+          url = url:gsub('/pull/(%d+)#discussion_r(%d+)', '/pull/%1/changes#r%2')
+        end
+        return url
       end
     end
     return s.pr_url
@@ -1215,43 +1271,170 @@ function M.show_pr_picker()
     return
   end
 
-  -- Format lines and keep parallel number/url tables
-  local lines = {}
-  local pr_numbers = {}
-  local pr_urls = {}
-  for _, pr in ipairs(prs) do
-    local author = (pr.author and pr.author.login) or '?'
-    table.insert(lines, string.format('#%-5d  %-20s  %s', pr.number, '@' .. author, pr.title or ''))
-    table.insert(pr_numbers, pr.number)
-    table.insert(pr_urls, pr.url)
+  local width = math.min(200, vim.o.columns - 4)
+
+  -- Truncate s to at most max_len bytes, appending '...' if cut.
+  -- If max_len < min_len the string is returned unchanged ("give up").
+  local function trunc(s, max_len, min_len)
+    min_len = min_len or 6
+    if #s <= max_len then return s end
+    if max_len < min_len then return s end
+    if max_len <= 3 then return s:sub(1, max_len) end
+    return s:sub(1, max_len - 3) .. '...'
   end
 
-  -- Floating picker window
-  local width  = math.min(100, vim.o.columns - 4)
-  local height = math.min(#lines, math.floor(vim.o.lines * 0.7))
+  -- ── Pass 1: extract field data, detect which optional columns are needed ──
+  local data = {}
+  local any_cmt, any_labels, any_assignees = false, false, false
+  for _, pr in ipairs(prs) do
+    local n_cmt = pr.totalCommentsCount or 0
+
+    local label_parts = {}
+    if type(pr.labels) == 'table' then
+      for _, lbl in ipairs(pr.labels) do
+        table.insert(label_parts, '[' .. (type(lbl)=='string' and lbl or lbl.name or '?') .. ']')
+      end
+    end
+    local labels_str = table.concat(label_parts, ' ')
+
+    local assignee_parts = {}
+    if type(pr.assignees) == 'table' then
+      for _, a in ipairs(pr.assignees) do
+        table.insert(assignee_parts, '@' .. (type(a)=='string' and a or a.login or '?'))
+      end
+    end
+    local assignees_str = table.concat(assignee_parts, ' ')
+
+    if n_cmt     > 0 then any_cmt       = true end
+    if labels_str   ~= '' then any_labels    = true end
+    if assignees_str~= '' then any_assignees = true end
+
+    table.insert(data, {
+      number    = pr.number,
+      url       = pr.url or '',
+      author    = (pr.author and pr.author.login) or '?',
+      title     = pr.title or '',
+      state     = pr.isDraft and 'draft' or 'open',
+      checks    = rollup_symbol(pr.statusCheckRollup),
+      n_cmt     = n_cmt,
+      labels    = labels_str,
+      assignees = assignees_str,
+      updated   = time_ago(pr.updatedAt),
+      created   = time_ago(pr.createdAt),
+    })
+  end
+
+  -- ── Column widths ──────────────────────────────────────────────────────────
+  -- All widths are in display columns (= bytes for ASCII; UTF-8 handled below).
+  local SEP         = '  '           -- separator between every column
+  local W_NUM       = 9              -- 'PR number' (header) / '#NNNNN  ' (content)
+  local W_STATE     = 5              -- 'open ' / 'draft'
+  local W_CHECKS    = 2              -- symbol (1 col) + 1 padding space
+  local W_CMT       = 8              -- 'Comments' (header) / up to '9999'
+  local W_UPDATED   = 8              -- 'just now'
+  local W_CREATED   = 8              -- 'just now'
+  local W_AUTHOR    = math.max(6,  math.min(18, math.floor(width * 0.11)))
+  local W_LABELS    = math.max(8,  math.min(30, math.floor(width * 0.13)))
+  local W_ASSIGNEES = math.max(8,  math.min(24, math.floor(width * 0.11)))
+
+  -- Overhead = everything except title + the separators around it.
+  local S = #SEP
+  local overhead = W_NUM + S
+    + W_AUTHOR + S
+    + S + W_STATE + S       -- sep before title absorbed here as: ...author SEP title SEP state...
+    + W_CHECKS + S
+    + (any_cmt       and (W_CMT       + S) or 0)
+    + (any_labels    and (W_LABELS    + S) or 0)
+    + (any_assignees and (W_ASSIGNEES + S) or 0)
+    + W_UPDATED + S
+    + W_CREATED               -- last column: no trailing separator
+  local W_TITLE = math.max(15, width - overhead)
+
+  -- col(s, w): truncate then left-pad to exactly w bytes.
+  -- For the give-up case (w < min_len), the string is not padded either.
+  local function col(s, w, min_w)
+    local t = trunc(s, w, min_w or 6)
+    if #t >= w then return t end
+    return string.format('%-' .. w .. 's', t)
+  end
+
+  -- The checks symbol is 1 display-column wide but may be 3 UTF-8 bytes.
+  -- Appending a literal space makes it consistently W_CHECKS (= 2) display cols.
+  local function checks_col(sym) return sym .. ' ' end
+
+  -- ── Pass 2: build header + content lines ──────────────────────────────────
+  local function build_row(num_s, author_s, title_s, state_s, checks_s,
+                           cmt_s, labels_s, assignees_s, updated_s, created_s)
+    local parts = {
+      col(num_s,    W_NUM,    1),
+      col(author_s, W_AUTHOR),
+      col(title_s,  W_TITLE),
+      col(state_s,  W_STATE,  1),
+      checks_s,  -- already W_CHECKS display cols
+    }
+    if any_cmt       then table.insert(parts, col(cmt_s,       W_CMT,       1)) end
+    if any_labels    then table.insert(parts, col(labels_s,    W_LABELS))       end
+    if any_assignees then table.insert(parts, col(assignees_s, W_ASSIGNEES))    end
+    table.insert(parts, col(updated_s, W_UPDATED, 1))
+    table.insert(parts, created_s)          -- last column: no padding needed
+    return table.concat(parts, SEP)
+  end
+
+  local header_line = build_row(
+    'PR number', 'Author', 'Title', 'State', 'CI',
+    'Comments', 'Labels', 'Assignees', 'Updated', 'Created'
+  )
+
+  -- Content lines start at display line 2 (line 1 = header).
+  local lines      = { header_line }
+  local pr_numbers = {}
+  local pr_urls    = {}
+  for i, d in ipairs(data) do
+    local cmt_str = d.n_cmt > 0 and tostring(d.n_cmt) or '-'
+    table.insert(lines, build_row(
+      string.format('#%d', d.number),
+      '@' .. d.author,
+      d.title,
+      d.state,
+      checks_col(d.checks),
+      cmt_str,
+      d.labels,
+      d.assignees,
+      d.updated,
+      d.created
+    ))
+    pr_numbers[i] = d.number
+    pr_urls[i]    = d.url
+  end
+
+  local height = math.min(#lines, math.floor(vim.o.lines * 0.8))
   local row    = math.floor((vim.o.lines - height) / 2)
-  local col    = math.floor((vim.o.columns - width) / 2)
+  local c      = math.floor((vim.o.columns - width) / 2)
 
   local picker_buf = vim.api.nvim_create_buf(false, true)
   vim.bo[picker_buf].buftype    = 'nofile'
   vim.bo[picker_buf].bufhidden  = 'wipe'
   vim.bo[picker_buf].modifiable = true
   vim.api.nvim_buf_set_lines(picker_buf, 0, -1, false, lines)
+  -- Highlight the header line so it stands out from the PR rows.
+  vim.api.nvim_buf_add_highlight(picker_buf, -1, 'Title', 0, 0, -1)
   vim.bo[picker_buf].modifiable = false
 
   local picker_win = vim.api.nvim_open_win(picker_buf, true, {
-    relative   = 'editor',
-    row        = row,
-    col        = col,
-    width      = width,
-    height     = height,
-    style      = 'minimal',
-    border     = 'rounded',
-    title      = string.format(' Open PRs — %s/%s  (<CR> open · q close) ', owner, repo),
-    title_pos  = 'center',
+    relative  = 'editor',
+    row       = row,
+    col       = c,
+    width     = width,
+    height    = height,
+    style     = 'minimal',
+    border    = 'rounded',
+    title     = string.format(' Open PRs — %s/%s  (<CR> open · K details · q close) ', owner, repo),
+    title_pos = 'center',
   })
   vim.wo[picker_win].cursorline = true
   vim.wo[picker_win].number     = false
+  -- Start on first PR, not the header.
+  vim.api.nvim_win_set_cursor(picker_win, { 2, 0 })
 
   local o = { noremap = true, silent = true, buffer = picker_buf }
 
@@ -1261,24 +1444,109 @@ function M.show_pr_picker()
     end
   end
 
+  -- Line 1 = header (non-navigable); PR index = cursor_line - 1.
+  local function pr_idx_at_cursor()
+    local line = vim.api.nvim_win_get_cursor(picker_win)[1]
+    local idx  = line - 1
+    return (idx >= 1 and idx <= #prs) and idx or nil
+  end
+
   vim.keymap.set('n', '<CR>', function()
-    local idx = vim.api.nvim_win_get_cursor(picker_win)[1]
-    local pr_num = pr_numbers[idx]
+    local idx = pr_idx_at_cursor()
     close()
-    if pr_num then
-      M.open(pr_num)
-    end
+    if idx then M.open(pr_numbers[idx]) end
   end, o)
 
   vim.keymap.set('n', '<leader>gx', function()
-    local idx = vim.api.nvim_win_get_cursor(picker_win)[1]
-    local url = pr_urls[idx]
-    if url then
-      vim.ui.open(url)
-    end
+    local idx = pr_idx_at_cursor()
+    if idx and pr_urls[idx] then vim.ui.open(pr_urls[idx]) end
   end, o)
 
-  vim.keymap.set('n', 'q',   close, o)
+  -- K: floating popup with full untruncated PR metadata (wrapping OK).
+  vim.keymap.set('n', 'K', function()
+    local idx = pr_idx_at_cursor()
+    if not idx then return end
+    local d = data[idx]
+    local popup_lines = {
+      string.format('**#%d** — %s', d.number, d.title),
+      '',
+      string.format('**Author:**    @%s', d.author),
+      string.format('**State:**     %s',  d.state),
+      string.format('**Checks:**    %s',  d.checks),
+    }
+    if d.n_cmt > 0 then
+      table.insert(popup_lines, string.format('**Comments:**  %d', d.n_cmt))
+    end
+    if d.labels ~= '' then
+      table.insert(popup_lines, string.format('**Labels:**    %s', d.labels))
+    end
+    if d.assignees ~= '' then
+      table.insert(popup_lines, string.format('**Assignees:** %s', d.assignees))
+    end
+    if d.updated ~= '' then
+      table.insert(popup_lines, string.format('**Updated:**   %s', d.updated))
+    end
+    if d.created ~= '' then
+      table.insert(popup_lines, string.format('**Created:**   %s', d.created))
+    end
+    if d.url ~= '' then
+      table.insert(popup_lines, '')
+      table.insert(popup_lines, d.url)
+    end
+
+    local float_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(float_buf, 0, -1, false, popup_lines)
+    vim.bo[float_buf].filetype   = 'markdown'
+    vim.bo[float_buf].modifiable = false
+
+    local fw = math.min(72, vim.o.columns - 6)
+    local fh = math.min(#popup_lines, math.floor(vim.o.lines * 0.5))
+    local float_win = vim.api.nvim_open_win(float_buf, false, {
+      relative  = 'cursor',
+      row       = 1,
+      col       = 0,
+      width     = fw,
+      height    = fh,
+      style     = 'minimal',
+      border    = 'rounded',
+      title     = string.format(' PR #%d ', d.number),
+      title_pos = 'center',
+      zindex    = 100,
+    })
+    vim.wo[float_win].wrap      = true
+    vim.wo[float_win].linebreak = true
+
+    vim.schedule(function()
+      local aug = vim.api.nvim_create_augroup('pr_picker_popup', { clear = true })
+      vim.api.nvim_create_autocmd({ 'CursorMoved', 'BufLeave' }, {
+        group    = aug,
+        buffer   = picker_buf,
+        once     = true,
+        callback = function()
+          if vim.api.nvim_win_is_valid(float_win) then
+            vim.api.nvim_win_close(float_win, true)
+          end
+          if vim.api.nvim_buf_is_valid(float_buf) then
+            vim.api.nvim_buf_delete(float_buf, { force = true })
+          end
+        end,
+      })
+    end)
+  end, o)
+
+  -- Snap cursor off the header line (e.g. after gg or mouse click).
+  vim.api.nvim_create_autocmd('CursorMoved', {
+    buffer = picker_buf,
+    callback = function()
+      if vim.api.nvim_win_is_valid(picker_win)
+        and vim.api.nvim_win_get_cursor(picker_win)[1] == 1
+      then
+        vim.api.nvim_win_set_cursor(picker_win, { 2, 0 })
+      end
+    end,
+  })
+
+  vim.keymap.set('n', 'q',     close, o)
   vim.keymap.set('n', '<Esc>', close, o)
 end
 
