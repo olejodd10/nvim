@@ -36,6 +36,12 @@ return {
     config = function() require('config.fugitive') end,
   },
 
+  -- Git buffer integration
+  {
+    'lewis6991/gitsigns.nvim',
+    config = function() require('config.gitsigns') end,
+  },
+
   -- Comments
   {
     'numToStr/Comment.nvim',
