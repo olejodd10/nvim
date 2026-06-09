@@ -165,8 +165,10 @@ function M.show_popup(buf)
     local author = (comment.user and comment.user.login) or 'unknown'
     local date = (comment.created_at or ''):gsub('T', ' '):gsub('Z', ' UTC')
     table.insert(popup_lines, string.format('**@%s** · %s', author, date))
-    if comment.path and comment.line then
+    if comment.path and comment.line and type(comment.line) == 'number' then
       table.insert(popup_lines, string.format('*%s:%d*', comment.path, comment.line))
+    elseif comment.path then
+      table.insert(popup_lines, string.format('*%s* *(outdated)*', comment.path))
     end
     table.insert(popup_lines, '')
     -- Split comment body into lines
