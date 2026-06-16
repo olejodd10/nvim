@@ -9,11 +9,12 @@ local function state()
 end
 
 -- ─────────────────────────────────────────────────────────
--- ANSI passthrough via terminal emulation
--- range-diff content is rendered in a terminal buffer using
--- nvim_open_term so Neovim's built-in terminal emulator handles
--- all ANSI codes (reverse video, bold, compound codes, etc.) exactly
--- as a real terminal would.  No manual colour-map needed.
+-- ANSI colour rendering for the range-diff pane
+-- range-diff content is kept in a regular (nofile) buffer so that
+-- Neovim handles line-wrapping natively (one buffer line per logical
+-- line, visually wrapped without creating extra buffer lines).
+-- ANSI SGR colour codes emitted by git are parsed and applied as
+-- extmark highlights so colours are preserved, including backgrounds.
 -- ─────────────────────────────────────────────────────────
 
 -- Strip ANSI escape sequences from a line (used for logic/search, not display).
@@ -21,35 +22,176 @@ local function strip_ansi(line)
   return (line:gsub('\027%[[^m]*m', ''))
 end
 
--- Monotonic counter so each terminal buffer gets a unique name and never
--- collides with an outgoing buffer that hasn't been wiped yet.
-local _rd_seq = 0
+-- Namespace for ANSI-derived highlights (separate from comment-icon namespace).
+local rd_hl_ns = vim.api.nvim_create_namespace('pr_review_rangediff_hl')
 
--- Create a fresh terminal buffer for the range-diff pane, display it in `win`,
--- and stream `raw_lines` (with ANSI) into it.  Neovim's built-in terminal
--- emulator renders all escape codes natively.
--- Returns (buf, chan).
-local function create_rd_term_buf(pr_number, win, raw_lines)
-  _rd_seq = _rd_seq + 1
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[buf].bufhidden = 'wipe'
-  -- Put in window BEFORE nvim_open_term (terminal needs the window for sizing).
-  -- This also triggers bufhidden=wipe on the outgoing buffer, freeing its name.
-  vim.api.nvim_win_set_buf(win, buf)
-  -- Name after the window swap so the outgoing buffer's name is already freed.
-  pcall(vim.api.nvim_buf_set_name, buf,
-    string.format('PR#%d//range-diff[%d]', pr_number, _rd_seq))
-  local chan = vim.api.nvim_open_term(buf, {})
-  -- Terminal buffers normally auto-enter insert mode; suppress that.
-  vim.api.nvim_create_autocmd('TermOpen', {
-    buffer = buf, once = true,
-    callback = function() vim.cmd('stopinsert') end,
-  })
-  if raw_lines and #raw_lines > 0 then
-    -- CR+LF required for terminal line endings
-    vim.api.nvim_chan_send(chan, table.concat(raw_lines, '\r\n'))
+-- Resolve a 4-bit ANSI colour index (0-15) to a hex string.
+-- The key diff colours (red/green/yellow/cyan) are derived from the active
+-- colorscheme's diff highlight groups so the range-diff pane matches the
+-- diff pane to the right.  Other slots use a vivid fallback palette.
+-- Cache is rebuilt on ColorScheme change.
+local _ansi_cache = nil
+local function ansi4(n)
+  if not _ansi_cache then
+    local function fg(group)
+      local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
+      return hl.fg and string.format('#%06x', hl.fg)
+    end
+    local red    = fg('diffRemoved') or '#ff5454'
+    local green  = fg('diffAdded')   or '#00cc7a'
+    local yellow = fg('diffChanged') or fg('@diff.delta') or '#ffff00'
+    local cyan   = fg('diffLine')    or '#33ffff'
+    _ansi_cache = {
+      [0]='#1e1e2e', [1]=red,      [2]=green,    [3]=yellow,
+      [4]='#6272a4', [5]='#ff79c6',[6]=cyan,     [7]='#bfbfbf',
+      [8]='#555555', [9]=red,      [10]=green,   [11]=yellow,
+      [12]='#d6acff',[13]='#ff92df',[14]=cyan,   [15]='#ffffff',
+    }
   end
-  return buf, chan
+  return vim.g['pr_review_ansi_' .. n] or _ansi_cache[n] or '#ffffff'
+end
+
+-- Convert an xterm-256 colour index to hex.
+local function xterm256(n)
+  if n < 16 then return ansi4(n) end
+  if n >= 232 then
+    local v = 8 + (n - 232) * 10
+    return string.format('#%02x%02x%02x', v, v, v)
+  end
+  n = n - 16
+  local b = n % 6; n = math.floor(n / 6)
+  local g = n % 6; n = math.floor(n / 6)
+  local r = n % 6
+  local function c(x) return x == 0 and 0 or 55 + x * 40 end
+  return string.format('#%02x%02x%02x', c(r), c(g), c(b))
+end
+
+-- Parse an SGR parameter string (e.g. '1;32', '48;5;196', '38;2;255;0;0')
+-- into a highlight-attribute table, or nil for a reset code.
+-- _fg_idx / _bg_idx track the original 4-bit colour index (0-7) so that
+-- rd_hl_for can apply the terminal "bold = bright" promotion.
+local function parse_sgr(codes)
+  if codes == '' or codes == '0' then return nil end
+  local params = {}
+  for s in (codes .. ';'):gmatch('([^;]*);') do
+    params[#params + 1] = tonumber(s) or 0
+  end
+  local a, i = {}, 1
+  while i <= #params do
+    local v = params[i]
+    if     v == 0   then return nil
+    elseif v == 1   then a.bold      = true
+    elseif v == 3   then a.italic    = true
+    elseif v == 4   then a.underline = true
+    elseif v == 7   then a.reverse   = true
+    elseif v >= 30  and v <= 37  then a.fg = ansi4(v - 30); a._fg_idx = v - 30
+    elseif v >= 40  and v <= 47  then a.bg = ansi4(v - 40); a._bg_idx = v - 40
+    elseif v >= 90  and v <= 97  then a.fg = ansi4(v - 90 + 8)
+    elseif v >= 100 and v <= 107 then a.bg = ansi4(v - 100 + 8)
+    elseif v == 38  and params[i+1] == 5 and params[i+2] then
+      a.fg = xterm256(params[i+2]); i = i + 2
+    elseif v == 48  and params[i+1] == 5 and params[i+2] then
+      a.bg = xterm256(params[i+2]); i = i + 2
+    elseif v == 38  and params[i+1] == 2 then
+      a.fg = string.format('#%02x%02x%02x', params[i+2] or 0, params[i+3] or 0, params[i+4] or 0)
+      i = i + 4
+    elseif v == 48  and params[i+1] == 2 then
+      a.bg = string.format('#%02x%02x%02x', params[i+2] or 0, params[i+3] or 0, params[i+4] or 0)
+      i = i + 4
+    end
+    i = i + 1
+  end
+  return next(a) ~= nil and a or nil
+end
+
+-- Derive a deterministic highlight-group name from an attr table, creating the
+-- group if it does not yet exist.  Groups are recreated on ColorScheme change
+-- by clearing _rd_dyn_groups so ansi4() picks up the new terminal colours.
+local _rd_dyn_groups = {}
+vim.api.nvim_create_autocmd('ColorScheme', {
+  callback = function() _rd_dyn_groups = {}; _ansi_cache = nil end,
+})
+
+local function rd_hl_for(attrs)
+  -- Mimic terminal "bold = bright": bold + standard 4-bit colour (0-7) → use
+  -- the bright variant (index+8).  This matches how terminal emulators render
+  -- ESC[1;32m as bright green rather than bold-weight soft green.
+  local fg = attrs.fg
+  local bg = attrs.bg
+  if attrs.bold and attrs._fg_idx then fg = ansi4(attrs._fg_idx + 8) end
+  if attrs.bold and attrs._bg_idx then bg = ansi4(attrs._bg_idx + 8) end
+
+  local parts = {}
+  if fg         then parts[#parts+1] = 'f' .. fg:sub(2) end
+  if bg         then parts[#parts+1] = 'b' .. bg:sub(2) end
+  if attrs.bold      then parts[#parts+1] = 'B' end
+  if attrs.italic    then parts[#parts+1] = 'I' end
+  if attrs.underline then parts[#parts+1] = 'U' end
+  if attrs.reverse   then parts[#parts+1] = 'R' end
+  if #parts == 0 then return nil end
+  local name = 'PRRd_' .. table.concat(parts)
+  if not _rd_dyn_groups[name] then
+    vim.api.nvim_set_hl(0, name, {
+      fg        = fg,
+      bg        = bg,
+      bold      = attrs.bold,
+      italic    = attrs.italic,
+      underline = attrs.underline,
+      reverse   = attrs.reverse,
+    })
+    _rd_dyn_groups[name] = true
+  end
+  return name
+end
+
+-- Parse ANSI SGR codes in `raw_lines` and apply the resulting colours as
+-- extmarks on `buf`.  `stripped_lines` provides the plain-text line lengths
+-- needed to correctly clamp trailing spans to end-of-line.
+local function apply_rd_ansi_highlights(buf, raw_lines, stripped_lines)
+  vim.api.nvim_buf_clear_namespace(buf, rd_hl_ns, 0, -1)
+  for lnum, raw_line in ipairs(raw_lines) do
+    local pos       = 1    -- position in raw_line (1-indexed)
+    local spos      = 0    -- byte position in the stripped equivalent (0-indexed)
+    local hl        = nil  -- currently active highlight group name
+    local hl_s      = 0    -- byte start of the current HL span
+    local cur_attrs = {}   -- accumulated SGR state (reset clears this)
+
+    local function close_span(end_col)
+      if hl and end_col > hl_s then
+        vim.api.nvim_buf_set_extmark(buf, rd_hl_ns, lnum - 1, hl_s, {
+          end_row  = lnum - 1,
+          end_col  = end_col,
+          hl_group = hl,
+          priority = 90,
+        })
+        hl = nil
+      end
+    end
+
+    while pos <= #raw_line do
+      local esc_s, esc_e, codes = raw_line:find('\027%[([^m]*)m', pos)
+      if not esc_s then
+        spos = spos + #raw_line:sub(pos)
+        break
+      end
+      spos = spos + (esc_s - pos)   -- plain-text bytes before this escape
+      close_span(spos)
+      local delta = parse_sgr(codes)
+      if delta == nil then
+        cur_attrs = {}   -- ESC[0m or ESC[m: full reset
+      else
+        -- If fg/bg colour changes, clear the old 4-bit index (it belongs to
+        -- the previous colour and must not promote the new one incorrectly).
+        if delta.fg then cur_attrs._fg_idx = nil end
+        if delta.bg then cur_attrs._bg_idx = nil end
+        for k, v in pairs(delta) do cur_attrs[k] = v end
+      end
+      hl   = next(cur_attrs) ~= nil and rd_hl_for(cur_attrs) or nil
+      hl_s = spos
+      pos  = esc_e + 1
+    end
+    close_span(#(stripped_lines[lnum] or ''))
+  end
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -731,8 +873,8 @@ local function annotate_range_diff_comments(buf, all_comments, current_tip_sha)
   end
 end
 
--- Buffer-local keymaps for range-diff terminal buffers.
--- Called on each new terminal buffer since the buffer is recreated per tip.
+-- Buffer-local keymaps and autocmds for the range-diff pane.
+-- Called once from setup_layout; the buffer persists across tip changes.
 local function setup_rd_buf_keymaps(buf)
   local o = { noremap = true, silent = true }
   vim.keymap.set('n', 'q', function() M.close_layout() end,
@@ -837,15 +979,18 @@ function M.update_range_diff(tip_idx)
   -- Store stripped lines for all logic (cursor context, annotations, navigation)
   s.range_diff_lines = vim.tbl_map(strip_ansi, raw_lines)
 
-  -- Display in a fresh terminal buffer for native ANSI rendering.
-  -- nvim_win_set_buf (inside create_rd_term_buf) will trigger bufhidden=wipe
-  -- on the outgoing buffer, so no explicit delete needed here.
-  s.range_diff_buf, s.range_diff_chan = create_rd_term_buf(
-    s.pr_number, s.range_diff_win, raw_lines)
-  setup_rd_buf_keymaps(s.range_diff_buf)
+  -- Populate the range-diff buffer (a regular nofile buffer) with plain text
+  -- and apply ANSI-derived extmark highlights.  Using a regular buffer means
+  -- Neovim wraps lines visually (one buffer line = one logical line), so line
+  -- numbers, extmarks and cursor row all correspond to logical lines directly.
+  local buf = s.range_diff_buf
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, s.range_diff_lines)
+  vim.bo[buf].modifiable = false
+  apply_rd_ansi_highlights(buf, raw_lines, s.range_diff_lines)
 
-  -- Annotate comment icons on the new buffer (reads s.range_diff_lines)
-  annotate_range_diff_comments(s.range_diff_buf, s.all_comments, tip.sha)
+  -- Annotate comment icons (reads s.range_diff_lines)
+  annotate_range_diff_comments(buf, s.all_comments, tip.sha)
 
   -- Mark cursor as needing reset on next entry into the range-diff window.
   range_diff_cursor_pending = true
@@ -878,9 +1023,10 @@ function M.get_range_diff_cursor_context()
   end
 
   local cursor = vim.api.nvim_win_get_cursor(s.range_diff_win)
-  local cur_row = cursor[1]  -- 1-indexed
+  local cur_row = cursor[1]  -- 1-indexed terminal row (may include wrap-continuation rows)
   local cur_col = cursor[2] + 1  -- 1-indexed
 
+  -- Buffer row == logical line index (regular buffer, visual wrap only).
   local lines = s.range_diff_lines or {}
   local line = lines[cur_row]
   if not line then return nil end
