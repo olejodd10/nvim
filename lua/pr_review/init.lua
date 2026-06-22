@@ -14,7 +14,7 @@ M.state = {
   base_ref = nil,
   head_sha = nil,
 
-  -- Tips: ordered newest first
+  -- Tips: ordered oldest first (tips[1] = initial push, tips[#tips] = current HEAD)
   -- [{sha, short_sha, date, subject, is_current, is_initial}]
   tips = {},
   current_tip_idx = 1,

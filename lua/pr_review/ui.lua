@@ -421,48 +421,69 @@ end
 -- Comment → tip assignment
 -- ─────────────────────────────────────────────────────────
 
--- Mutates each comment to set comment._tip_sha (full SHA of the tip it
--- belongs to). A comment belongs to the tip that was HEAD when it was made:
---   1. commit_id matches a tip SHA directly → that tip
---   2. commit_id is an individual commit SHA → newest tip that contains it
---      (git merge-base --is-ancestor, cached in api)
---   3. Fall back to the current HEAD tip
+-- Mutates each comment to set comment._tip_sha and comment._is_files_changed.
+--
+-- GitHub retroactively updates comment.commit_id to the latest HEAD SHA when
+-- force-pushes happen, so SHA/ancestry matching cannot reliably determine which
+-- tip was current when the comment was made. Instead we use timestamps:
+--   tips[1].push_date = '' (initial push, treated as -∞)
+--   tips[i].push_date  = ISO-8601 date when that version became HEAD (force-push date)
+--
+-- A comment belongs to the newest tip with push_date <= comment.created_at.
+--
+-- is_files_changed: true when commit_id matches any tip SHA (reviewer was on the
+-- "Files Changed" cumulative-diff tab); false when it is an individual commit SHA
+-- (reviewer was on the "Commits" tab viewing that specific commit).
 local function assign_comments_to_tips(comments, tips, head_sha)
   for _, c in ipairs(comments) do
     local cid = c.commit_id or ''
-    local owner = nil
-    local is_files_changed = false
+    local comment_ts = c.created_at or ''
 
-    -- 1. Prefix match against tip SHAs
-    for _, tip in ipairs(tips) do
-      local min_len = math.min(#cid, #tip.sha)
-      if min_len >= 7 and cid:sub(1, min_len) == tip.sha:sub(1, min_len) then
-        owner = tip.sha
-        -- Mark as "files changed" only when the path is NOT in the tip commit's
-        -- own diff. If the path IS touched by the tip commit, commit_id = tip SHA
-        -- is ambiguous (could be from "Files Changed" OR from reviewing the tip
-        -- commit directly on the Commits tab) — default to commit-specific so
-        -- that tip-targeted reviews appear alongside that commit.
-        local path = c.path or ''
-        local tip_files = api.files_in_commit(tip.sha)
-        is_files_changed = (path ~= '' and not tip_files[path])
+    -- Find the newest tip that was already HEAD when this comment was created.
+    local tip_by_ts = tips[1]  -- safe fallback: initial tip (push_date = '')
+    for i = #tips, 1, -1 do
+      local pd = tips[i].push_date or ''
+      if pd == '' or pd <= comment_ts then
+        tip_by_ts = tips[i]
         break
       end
     end
 
-    -- 2. Ancestry check for individual commit SHAs → commit-specific comment
-    if not owner and #cid >= 7 then
-      for i = #tips, 1, -1 do
-        if api.is_ancestor(cid, tips[i].sha) then
-          owner = tips[i].sha
-          is_files_changed = false
+    -- Determine display bucket: "Files Changed" (cumulative diff) vs commit-specific.
+    local is_files_changed = false
+    if #cid >= 7 then
+      for _, tip in ipairs(tips) do
+        local ml = math.min(#cid, #tip.sha)
+        if ml >= 7 and cid:sub(1, ml) == tip.sha:sub(1, ml) then
+          is_files_changed = true
           break
         end
       end
     end
 
-    c._tip_sha = owner or head_sha
+    c._tip_sha = tip_by_ts.sha
     c._is_files_changed = is_files_changed
+  end
+
+  -- Propagate root comment's _tip_sha to all replies so the full thread
+  -- appears under a single tip. Repeat until stable to handle nested replies.
+  local id_to_tip_sha = {}
+  for _, c in ipairs(comments) do
+    id_to_tip_sha[c.id] = c._tip_sha
+  end
+  local changed = true
+  while changed do
+    changed = false
+    for _, c in ipairs(comments) do
+      if c.in_reply_to_id then
+        local parent_tip = id_to_tip_sha[c.in_reply_to_id]
+        if parent_tip and c._tip_sha ~= parent_tip then
+          c._tip_sha = parent_tip
+          id_to_tip_sha[c.id] = parent_tip
+          changed = true
+        end
+      end
+    end
   end
 end
 
@@ -1771,7 +1792,7 @@ function M.open(pr_number)
     for _, ev in ipairs(events) do
       local sha = ev.after or ev.sha
       if sha and sha ~= '' then
-        table.insert(ordered_shas, { sha = sha })
+        table.insert(ordered_shas, { sha = sha, push_date = ev.date })
       end
     end
   end
@@ -1810,6 +1831,7 @@ function M.open(pr_number)
       sha = sha,
       short_sha = sha:sub(1, 7),
       date = date,
+      push_date = entry.push_date or '',
       subject = subject,
       files = api.files_in_commit(sha),
       is_current = entry.is_current,
