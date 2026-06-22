@@ -508,7 +508,7 @@ function M.populate_tips()
     end
     local comment_icon = tips_with_comments[tip.sha] and ' 💬' or ''
     local date_str = tip.date or ''
-    local subject = (tip.subject or ''):sub(1, 30)
+    local subject = tip.subject or ''
     lines[i] = string.format('[%d] %s%s%s  %s  %s',
       i, tip.short_sha, tag, comment_icon, date_str, subject)
   end
@@ -683,7 +683,8 @@ function M.populate_comments_pane()
                      .. (thread.line and (':' .. thread.line) or '')
                      .. '  '
       end
-      local body_preview = vim.trim((thread.comments[1].body or ''):gsub('\r?\n', ' ')):sub(1, 50)
+      local body_raw = vim.trim((thread.comments[1].body or ''):gsub('\r?\n', ' '))
+      local body_preview = #body_raw > 50 and body_raw:sub(1, 47) .. '...' or body_raw
       local reply_tag = #thread.comments > 1 and string.format(' [+%d]', #thread.comments - 1) or ''
       table.insert(lines, string.format('%s@%s  %s%s%s', tip_tag, author, short_path, body_preview, reply_tag))
       s.comments_lines[#lines] = i
