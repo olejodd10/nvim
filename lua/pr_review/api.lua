@@ -223,7 +223,7 @@ end
 -- List open PRs for the repo via GraphQL (needed for totalCommentsCount,
 -- which is not available in `gh pr list --json`).
 -- Returns [{number, title, author, url, createdAt, updatedAt, isDraft, state,
---           labels, assignees, totalCommentsCount, statusCheckRollup}]
+--           labels, assignees, totalCommentsCount, totalCommitsCount, statusCheckRollup}]
 -- with shapes compatible with the rest of the codebase.
 function M.list_open_prs(owner, repo)
   local query = string.format(
@@ -233,7 +233,8 @@ function M.list_open_prs(owner, repo)
     .. ' author { login }'
     .. ' labels(first: 20) { nodes { name } }'
     .. ' assignees(first: 10) { nodes { login } }'
-    .. ' commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }'
+    .. ' commitCount: commits { totalCount }'
+    .. ' latestCommit: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }'
     .. ' } } } }',
     owner, repo
   )
@@ -257,7 +258,7 @@ function M.list_open_prs(owner, repo)
     -- statusCheckRollup comes as a single {state} object; wrap in array so
     -- rollup_symbol() can iterate it without changes.
     local checks = {}
-    local cn = node.commits and node.commits.nodes and node.commits.nodes[1]
+    local cn = node.latestCommit and node.latestCommit.nodes and node.latestCommit.nodes[1]
     local rollup = cn and cn.commit and cn.commit.statusCheckRollup
     if type(rollup) == 'table' then
       table.insert(checks, { state = rollup.state })
@@ -275,6 +276,7 @@ function M.list_open_prs(owner, repo)
       labels             = labels,
       assignees          = assignees,
       totalCommentsCount = node.totalCommentsCount or 0,
+      totalCommitsCount  = (node.commitCount and node.commitCount.totalCount) or 0,
       statusCheckRollup  = checks,
     })
   end

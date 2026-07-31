@@ -1485,6 +1485,7 @@ function M.show_pr_picker()
       state     = pr.isDraft and 'draft' or 'open',
       checks    = rollup_symbol(pr.statusCheckRollup),
       n_cmt     = n_cmt,
+      n_commits = pr.totalCommitsCount or 0,
       labels    = labels_str,
       assignees = assignees_str,
       updated   = time_ago(pr.updatedAt),
@@ -1499,6 +1500,7 @@ function M.show_pr_picker()
   local W_STATE     = 5              -- 'open ' / 'draft'
   local W_CHECKS    = 2              -- symbol (1 col) + 1 padding space
   local W_CMT       = 8              -- 'Comments' (header) / up to '9999'
+  local W_COMMITS   = 7              -- 'Commits' (header) / up to '999'
   local W_UPDATED   = 8              -- 'just now'
   local W_CREATED   = 8              -- 'just now'
   local W_AUTHOR    = math.max(6,  math.min(18, math.floor(width * 0.11)))
@@ -1512,6 +1514,7 @@ function M.show_pr_picker()
     + S + W_STATE + S       -- sep before title absorbed here as: ...author SEP title SEP state...
     + W_CHECKS + S
     + (any_cmt       and (W_CMT       + S) or 0)
+    + W_COMMITS + S
     + (any_labels    and (W_LABELS    + S) or 0)
     + (any_assignees and (W_ASSIGNEES + S) or 0)
     + W_UPDATED + S
@@ -1532,7 +1535,7 @@ function M.show_pr_picker()
 
   -- ── Pass 2: build header + content lines ──────────────────────────────────
   local function build_row(num_s, author_s, title_s, state_s, checks_s,
-                           cmt_s, labels_s, assignees_s, updated_s, created_s)
+                           cmt_s, commits_s, labels_s, assignees_s, updated_s, created_s)
     local parts = {
       col(num_s,    W_NUM,    1),
       col(author_s, W_AUTHOR),
@@ -1541,6 +1544,7 @@ function M.show_pr_picker()
       checks_s,  -- already W_CHECKS display cols
     }
     if any_cmt       then table.insert(parts, col(cmt_s,       W_CMT,       1)) end
+    table.insert(parts, col(commits_s, W_COMMITS, 1))
     if any_labels    then table.insert(parts, col(labels_s,    W_LABELS))       end
     if any_assignees then table.insert(parts, col(assignees_s, W_ASSIGNEES))    end
     table.insert(parts, col(updated_s, W_UPDATED, 1))
@@ -1550,7 +1554,7 @@ function M.show_pr_picker()
 
   local header_line = build_row(
     'PR number', 'Author', 'Title', 'State', 'CI',
-    'Comments', 'Labels', 'Assignees', 'Updated', 'Created'
+    'Comments', 'Commits', 'Labels', 'Assignees', 'Updated', 'Created'
   )
 
   -- Content lines start at display line 2 (line 1 = header).
@@ -1558,7 +1562,8 @@ function M.show_pr_picker()
   local pr_numbers = {}
   local pr_urls    = {}
   for i, d in ipairs(data) do
-    local cmt_str = d.n_cmt > 0 and tostring(d.n_cmt) or '-'
+    local cmt_str     = d.n_cmt     > 0 and tostring(d.n_cmt)     or '-'
+    local commits_str = d.n_commits > 0 and tostring(d.n_commits) or '-'
     table.insert(lines, build_row(
       string.format('#%d', d.number),
       '@' .. d.author,
@@ -1566,6 +1571,7 @@ function M.show_pr_picker()
       d.state,
       checks_col(d.checks),
       cmt_str,
+      commits_str,
       d.labels,
       d.assignees,
       d.updated,
@@ -1644,6 +1650,9 @@ function M.show_pr_picker()
     }
     if d.n_cmt > 0 then
       table.insert(popup_lines, string.format('**Comments:**  %d', d.n_cmt))
+    end
+    if d.n_commits > 0 then
+      table.insert(popup_lines, string.format('**Commits:**   %d', d.n_commits))
     end
     if d.labels ~= '' then
       table.insert(popup_lines, string.format('**Labels:**    %s', d.labels))
