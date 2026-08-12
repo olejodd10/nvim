@@ -495,10 +495,20 @@ function M.populate_tips()
   local s = state()
   local lines = {}
 
-  -- Pre-build set: which tips have at least one comment assigned?
+  -- Pre-build map: which tips have comments, and are they all resolved?
+  -- A tip with at least one unresolved comment is shown as unresolved (💬).
   local tips_with_comments = {}
+  local tips_all_resolved = {}
   for _, c in ipairs(s.all_comments) do
-    if c._tip_sha then tips_with_comments[c._tip_sha] = true end
+    if c._tip_sha then
+      tips_with_comments[c._tip_sha] = true
+      if tips_all_resolved[c._tip_sha] == nil then
+        tips_all_resolved[c._tip_sha] = true
+      end
+      if not c.is_resolved then
+        tips_all_resolved[c._tip_sha] = false
+      end
+    end
   end
 
   for i, tip in ipairs(s.tips) do
@@ -506,7 +516,10 @@ function M.populate_tips()
     if tip.is_current then tag = ' (current)'
     elseif tip.is_initial then tag = ' (initial)'
     end
-    local comment_icon = tips_with_comments[tip.sha] and ' 💬' or ''
+    local comment_icon = ''
+    if tips_with_comments[tip.sha] then
+      comment_icon = tips_all_resolved[tip.sha] and ' ✅' or ' 💬'
+    end
     local date_str = tip.date or ''
     local subject = tip.subject or ''
     lines[i] = string.format('[%d] %s%s%s  %s  %s',
@@ -686,7 +699,13 @@ function M.populate_comments_pane()
       local body_raw = vim.trim((thread.comments[1].body or ''):gsub('\r?\n', ' '))
       local body_preview = #body_raw > 50 and body_raw:sub(1, 47) .. '...' or body_raw
       local reply_tag = #thread.comments > 1 and string.format(' [+%d]', #thread.comments - 1) or ''
-      table.insert(lines, string.format('%s@%s  %s%s%s', tip_tag, author, short_path, body_preview, reply_tag))
+      -- Only mark the thread resolved if every comment in it is resolved.
+      local all_resolved = true
+      for _, c in ipairs(thread.comments) do
+        if not c.is_resolved then all_resolved = false; break end
+      end
+      local resolved_icon = all_resolved and '✅ ' or ''
+      table.insert(lines, string.format('%s%s@%s  %s%s%s', resolved_icon, tip_tag, author, short_path, body_preview, reply_tag))
       s.comments_lines[#lines] = i
     end
   end
@@ -815,14 +834,24 @@ function M.populate_files_pane(tip_idx)
     else
       -- Build set of files with comments for this tip (files-changed view only)
       local files_with_comments = {}
+      local files_all_resolved = {}
       for _, c in ipairs(s.all_comments) do
         if c._tip_sha == tip.sha and c.path and c._is_files_changed then
           files_with_comments[c.path] = true
+          if files_all_resolved[c.path] == nil then
+            files_all_resolved[c.path] = true
+          end
+          if not c.is_resolved then
+            files_all_resolved[c.path] = false
+          end
         end
       end
       for i, f in ipairs(files) do
         s.files_lines[i] = { status = f.status, path = f.path, base = base, tip_sha = tip.sha }
-        local comment_icon = files_with_comments[f.path] and ' 💬' or ''
+        local comment_icon = ''
+        if files_with_comments[f.path] then
+          comment_icon = files_all_resolved[f.path] and ' ✅' or ' 💬'
+        end
         table.insert(lines, string.format('%s  %s%s', f.status, f.path, comment_icon))
       end
     end
@@ -885,9 +914,12 @@ local function annotate_range_diff_comments(buf, all_comments, current_tip_sha)
     end
     if sha then
       local files_set = api.files_in_commit(sha)
-      if comments_mod.has_comments_for_sha(sha, tip_comments, current_tip_sha, files_set) then
+      local has, all_resolved = comments_mod.has_comments_for_sha(sha, tip_comments, current_tip_sha, files_set)
+      if has then
+        local icon = all_resolved and ' ✅' or ' 💬'
+        local hl = all_resolved and 'DiagnosticOk' or 'DiagnosticInfo'
         vim.api.nvim_buf_set_extmark(buf, rd_ns, i - 1, 0, {
-          virt_text = { { ' 💬', 'DiagnosticInfo' } },
+          virt_text = { { icon, hl } },
           virt_text_pos = 'eol',
         })
       end
@@ -1784,6 +1816,15 @@ function M.open(pr_number)
   -- Fetch comments and PR log
   s.all_comments = api.get_comments(owner, repo, pr.number)
   s.pr_log = api.get_pr_log(owner, repo, pr.number)
+
+  -- Annotate each comment with its review thread's resolved status
+  -- (comments not part of any thread, e.g. general issue comments, are left untouched).
+  local resolutions = api.get_review_thread_resolutions(owner, repo, pr.number)
+  for _, c in ipairs(s.all_comments) do
+    if resolutions[c.id] ~= nil then
+      c.is_resolved = resolutions[c.id]
+    end
+  end
 
   -- Build tips list (force-push history, newest first)
   local events = api.get_force_push_events(owner, repo, pr.number)

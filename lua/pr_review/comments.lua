@@ -52,16 +52,21 @@ end
 -- tip_comments should already be filtered to the relevant tip.
 -- _is_files_changed comments are excluded: those belong to the files pane, not
 -- to any individual commit view. tip_sha and files_set are kept for compat.
+-- Returns has_comments, all_resolved (all_resolved only meaningful when
+-- has_comments is true; a single unresolved comment/thread makes it false).
 function M.has_comments_for_sha(sha, tip_comments, tip_sha, files_set)
+  local has = false
+  local all_resolved = true
   for _, c in ipairs(tip_comments) do
     if c._is_files_changed then goto continue end
     local cid = c.commit_id or ''
     if cid:sub(1, #sha) == sha or sha:sub(1, #cid) == cid then
-      return true
+      has = true
+      if not c.is_resolved then all_resolved = false end
     end
     ::continue::
   end
-  return false
+  return has, all_resolved
 end
 
 function M.clear_comments(buf)
@@ -134,10 +139,21 @@ function M.attach_comments(buf, sha, all_comments, tip_sha, _file_hint)
       local buf_line = file_map[group.line]
       if buf_line then
         local count = #group.comments
+        -- The group is only "resolved" if every comment/thread in it is
+        -- resolved; a single unresolved comment keeps the whole line unresolved.
+        local all_resolved = true
+        for _, c in ipairs(group.comments) do
+          if not c.is_resolved then
+            all_resolved = false
+            break
+          end
+        end
         local outdated_suffix = group.outdated and ' (outdated)' or ''
-        local label = string.format(' 💬 %d comment%s%s', count, count > 1 and 's' or '', outdated_suffix)
+        local icon = all_resolved and '✅' or '💬'
+        local hl = all_resolved and 'DiagnosticOk' or 'DiagnosticInfo'
+        local label = string.format(' %s %d comment%s%s', icon, count, count > 1 and 's' or '', outdated_suffix)
         vim.api.nvim_buf_set_extmark(buf, ns_id, buf_line - 1, 0, {
-          virt_text = { { label, 'DiagnosticInfo' } },
+          virt_text = { { label, hl } },
           virt_text_pos = 'eol',
         })
         M.buf_comment_maps[buf][buf_line] = group.comments
@@ -191,6 +207,15 @@ function M.show_popup(buf)
   local win_width = math.min(82, vim.o.columns - 6)
   local win_height = math.min(#popup_lines + 2, math.floor(vim.o.lines * 0.6))
 
+  -- Only show as resolved if every comment shown in this popup is resolved.
+  local all_resolved = true
+  for _, comment in ipairs(comments) do
+    if not comment.is_resolved then all_resolved = false; break end
+  end
+  local title = all_resolved
+    and string.format(' PR Comments (%d) ✅ Resolved ', #comments)
+    or string.format(' PR Comments (%d) ', #comments)
+
   local float_win = vim.api.nvim_open_win(float_buf, false, {
     relative = 'cursor',
     row = 1,
@@ -199,7 +224,7 @@ function M.show_popup(buf)
     height = win_height,
     style = 'minimal',
     border = 'rounded',
-    title = string.format(' PR Comments (%d) ', #comments),
+    title = title,
     title_pos = 'center',
   })
   vim.wo[float_win].wrap = true

@@ -90,6 +90,42 @@ function M.get_force_push_events(owner, repo, pr_number)
   return events
 end
 
+-- Returns a map of comment id (number, matching REST comment `id`) -> true/false
+-- indicating whether the review thread containing that comment is resolved.
+-- Comments not part of any review thread (e.g. general issue comments) are
+-- simply absent from the map.
+function M.get_review_thread_resolutions(owner, repo, pr_number)
+  local query = string.format(
+    '{ repository(owner: "%s", name: "%s") { pullRequest(number: %d) {'
+    .. ' reviewThreads(first: 100) { nodes { isResolved'
+    .. ' comments(first: 100) { nodes { databaseId } } } } } } }',
+    owner, repo, pr_number
+  )
+  local cmd = 'gh api graphql -f query=' .. vim.fn.shellescape(query) .. ' 2>/dev/null'
+  local out, code = run(cmd)
+  if code ~= 0 then return {} end
+  local data = parse_json(out)
+  local nodes = data
+    and data.data
+    and data.data.repository
+    and data.data.repository.pullRequest
+    and data.data.repository.pullRequest.reviewThreads
+    and data.data.repository.pullRequest.reviewThreads.nodes
+  if not nodes then return {} end
+  local resolutions = {}
+  for _, thread in ipairs(nodes) do
+    local comment_nodes = thread.comments and thread.comments.nodes
+    if comment_nodes then
+      for _, c in ipairs(comment_nodes) do
+        if c.databaseId then
+          resolutions[c.databaseId] = thread.isResolved == true
+        end
+      end
+    end
+  end
+  return resolutions
+end
+
 -- Returns all inline PR review comments
 function M.get_comments(owner, repo, pr_number)
   -- Use --jq '.[]' so --paginate emits NDJSON (one object per line) instead of
