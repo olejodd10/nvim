@@ -70,6 +70,14 @@ return {
     config = function() require('config.nvimtree') end,
   },
 
+  -- Quick navigation for files actively worked on
+  {
+    'ThePrimeagen/harpoon',
+    branch = 'harpoon2',
+    dependencies = { 'nvim-lua/plenary.nvim' },
+    config = function() require('config.harpoon') end,
+  },
+
   -- Copilot
   {
     'github/copilot.vim',
