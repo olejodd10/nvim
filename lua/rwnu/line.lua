@@ -130,6 +130,9 @@ end
 
 local function fill_empty_positions(chars)
   local max_key = get_max_key(chars)
+  if not max_key then
+      return
+  end
   for col = 1, max_key do
     if not chars[col] then
       chars[col] = " "
@@ -137,57 +140,65 @@ local function fill_empty_positions(chars)
   end
 end
 
-function M.make_number_line(line, cursor_char)
-  local chars = split_chars(line)
+function M.make_number_line_table(line, cursor_char)
+    local chars = split_chars(line)
 
-  if #chars == 0 then
-    return "", 1, 0
-  end
-
-  -- In insertion mode the cursor can be on a nonexistent char
-  if cursor_char > #chars then
-      cursor_char = #chars
-  end
-
-  local words = get_words(chars)
-  if #words == 0 then
-    return "", 1, 0
-  end
-
-  local char_display_starts, char_display_width = get_display_range(chars)
-
-  -- The number to show for the cursor
-  local cursor_number = tostring(cursor_char)
-  -- Where to show it
-  local cursor_display_start = char_display_starts[cursor_char] + char_display_width[cursor_char] - 1
-
-  --
-  -- The cursor column number has priority.
-  --
-  -- Put it into the output first. Word numbers are added afterwards and are
-  -- simply skipped if they would collide with it.
-  --
-  local output = {}
-  put_string(output, cursor_number, cursor_display_start)
-
-  local cursor_word, cursor_on_word_start = get_cursor_word(words, cursor_char)
-  for word_index, word in ipairs(words) do
-    -- What to display
-    local word_number = relative_number(word_index, cursor_word, cursor_on_word_start)
-    local number = tostring(word_number)
-
-    -- Where to display it
-    local word_number_display_start = char_display_starts[word.char_start]
-    local word_number_display_end = word_number_display_start + #number - 1
-
-    if range_is_empty(output, saturating_sub(word_number_display_start, 1), word_number_display_end + 1) then
-      put_string(output, number, word_number_display_start)
+    if #chars == 0 then
+        return {}, 1, 0
     end
-  end
 
-  fill_empty_positions(output)
+    -- In insertion mode the cursor can be on a nonexistent char
+    if cursor_char > #chars then
+        cursor_char = #chars
+    end
 
-  return table.concat(output), cursor_display_start, #cursor_number
+    local words = get_words(chars)
+    if #words == 0 then
+        return {}, 1, 0
+    end
+
+    local char_display_starts, char_display_width = get_display_range(chars)
+
+    -- The number to show for the cursor
+    local cursor_number = tostring(cursor_char)
+    -- Where to show it
+    local cursor_display_start = char_display_starts[cursor_char] + char_display_width[cursor_char] - 1
+
+    --
+    -- The cursor column number has priority.
+    --
+    -- Put it into the number_line_table first. Word numbers are added afterwards and are
+    -- simply skipped if they would collide with it.
+    --
+    local number_line_table = {}
+    put_string(number_line_table, cursor_number, cursor_display_start)
+
+    local cursor_word, cursor_on_word_start = get_cursor_word(words, cursor_char)
+    for word_index, word in ipairs(words) do
+        -- What to display
+        local word_number = relative_number(word_index, cursor_word, cursor_on_word_start)
+        local number = tostring(word_number)
+
+        -- Where to display it
+        local word_number_display_start = char_display_starts[word.char_start]
+        local word_number_display_end = word_number_display_start + #number - 1
+
+        if range_is_empty(number_line_table, saturating_sub(word_number_display_start, 1), word_number_display_end + 1) then
+            put_string(number_line_table, number, word_number_display_start)
+        end
+    end
+
+    return number_line_table, cursor_display_start, #cursor_number
+end
+
+function M.make_number_line(line, cursor_char)
+    local number_line_table, cursor_display_start, cursor_display_width = M.make_number_line_table(line, cursor_char)
+
+    fill_empty_positions(number_line_table)
+
+    local number_line_str = table.concat(number_line_table)
+
+    return number_line_str, cursor_display_start, cursor_display_width
 end
 
 -- byte_index is 0-indexed, return value is 1-indexed
