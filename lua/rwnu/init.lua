@@ -3,13 +3,16 @@ local M = {}
 local rwnu_line = require("rwnu.line")
 local style = require("rwnu.style")
 
+local in_subscript = false
+local in_superscript = false
+
 local enabled = true
 
 local winbar_enabled = true
 
 local overlay_enabled = true
 local overlay_extmark_ns = vim.api.nvim_create_namespace('rwnu')
-local overlay_offset = -1
+local overlay_offset = 1
 
 local function clear_winbar(win_id)
     vim.wo[win_id].winbar = ""
@@ -59,7 +62,7 @@ local function update_winbar(win_id)
   -- Note that the cursor number is positioned using the display column of the cursor,
   -- but shows the character index, which may be different (think tabs).
   local padding = string.rep(" ", offset)
-  local number_line, cursor_display_start, cursor_display_width = rwnu_line.make_number_line(line, cursor_char)
+  local number_line, cursor_display_start, cursor_display_width = rwnu_line.make_number_line(line, cursor_char, false, false) -- TODO sub-/superscript is buggy for winbar
   if number_line ~= "" then
       local stylized_number_line = style.stylize_number_line(number_line, cursor_display_start, cursor_display_width)
       vim.wo[win_id].winbar = padding .. stylized_number_line
@@ -89,7 +92,7 @@ local function update_overlay(win_id)
 
     -- Note that the cursor number is positioned using the display column of the cursor,
     -- but shows the character index, which may be different (think tabs).
-    local number_line_table, cursor_display_start, cursor_dislay_width = rwnu_line.make_number_line_table(line, cursor_char)
+    local number_line_table, cursor_display_start, cursor_dislay_width = rwnu_line.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
 
     clear_overlay(buf_id)
     for k, v in pairs(number_line_table) do
@@ -217,6 +220,12 @@ function M.setup(opts)
 
   if is_integer(opts.overlay_offset) then
     overlay_offset = opts.overlay_offset
+  end
+
+  if opts.in_subscript == true then
+      in_subscript = true
+  elseif opts.in_superscript == true then
+      in_superscript = true
   end
 
   -- Disable if explicitly disabled

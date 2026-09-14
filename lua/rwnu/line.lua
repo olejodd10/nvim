@@ -102,9 +102,49 @@ local function saturating_sub(a, b)
     return math.max(0, a - b)
 end
 
-local function put_string(chars, str, start_col)
+local function to_subscript(digit_str)
+    local subscripts = {
+        "₀",
+        "₁",
+        "₂",
+        "₃",
+        "₄",
+        "₅",
+        "₆",
+        "₇",
+        "₈",
+        "₉",
+    }
+    local digit = tonumber(digit_str)
+    return subscripts[digit + 1]
+end
+
+local function to_superscript(digit_str)
+    local superscripts = {
+        "⁰",
+        "¹",
+        "²",
+        "³",
+        "⁴",
+        "⁵",
+        "⁶",
+        "⁷",
+        "⁸",
+        "⁹",
+    }
+    local digit = tonumber(digit_str)
+    return superscripts[digit + 1]
+end
+
+local function put_string(chars, str, start_col, in_subscript, in_superscript)
   for offset = 1, #str do
-    chars[start_col + offset - 1] = str:sub(offset, offset)
+    local digit_str = str:sub(offset, offset)
+    if in_subscript then
+        digit_str = to_subscript(digit_str)
+    elseif in_superscript then
+         digit_str = to_superscript(digit_str)
+    end
+    chars[start_col + offset - 1] = digit_str
   end
 end
 
@@ -140,7 +180,7 @@ local function fill_empty_positions(chars)
   end
 end
 
-function M.make_number_line_table(line, cursor_char)
+function M.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
     local chars = split_chars(line)
 
     if #chars == 0 then
@@ -171,7 +211,7 @@ function M.make_number_line_table(line, cursor_char)
     -- simply skipped if they would collide with it.
     --
     local number_line_table = {}
-    put_string(number_line_table, cursor_number, cursor_display_start)
+    put_string(number_line_table, cursor_number, cursor_display_start, in_subscript, in_superscript)
 
     local cursor_word, cursor_on_word_start = get_cursor_word(words, cursor_char)
     for word_index, word in ipairs(words) do
@@ -184,15 +224,15 @@ function M.make_number_line_table(line, cursor_char)
         local word_number_display_end = word_number_display_start + #number - 1
 
         if range_is_empty(number_line_table, saturating_sub(word_number_display_start, 1), word_number_display_end + 1) then
-            put_string(number_line_table, number, word_number_display_start)
+            put_string(number_line_table, number, word_number_display_start, in_subscript, in_superscript)
         end
     end
 
     return number_line_table, cursor_display_start, #cursor_number
 end
 
-function M.make_number_line(line, cursor_char)
-    local number_line_table, cursor_display_start, cursor_display_width = M.make_number_line_table(line, cursor_char)
+function M.make_number_line(line, cursor_char, in_subscript, in_superscript)
+    local number_line_table, cursor_display_start, cursor_display_width = M.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
 
     fill_empty_positions(number_line_table)
 
