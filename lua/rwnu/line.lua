@@ -1,8 +1,6 @@
 local M = {}
 
-local function split_chars(line)
-  return vim.fn.split(line, "\\zs")
-end
+local utf8 = require("rwnu.utf8")
 
 local function get_words(chars)
   local words = {}
@@ -181,7 +179,7 @@ local function fill_empty_positions(chars)
 end
 
 function M.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
-    local chars = split_chars(line)
+    local chars = utf8.split_chars(line)
 
     if #chars == 0 then
         return {}, 1, 0
@@ -231,24 +229,14 @@ function M.make_number_line_table(line, cursor_char, in_subscript, in_superscrip
     return number_line_table, cursor_display_start, #cursor_number
 end
 
-function M.make_number_line(line, cursor_char, in_subscript, in_superscript)
-    local number_line_table, cursor_display_start, cursor_display_width = M.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
-
+function M.make_number_line_from_table(number_line_table)
     fill_empty_positions(number_line_table)
-
-    local number_line_str = table.concat(number_line_table)
-
-    return number_line_str, cursor_display_start, cursor_display_width
+    return table.concat(number_line_table)
 end
 
--- byte_index is 0-indexed, return value is 1-indexed
-function M.byte_to_char_index(line, byte_index)
-    if byte_index == 0 then
-        return 1
-    end
-
-    local prefix = line:sub(1, byte_index)
-    return vim.fn.strchars(prefix) + 1
+function M.make_number_line(line, cursor_char, in_subscript, in_superscript)
+    local number_line_table, cursor_display_start, cursor_display_width = M.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
+    return M.make_number_line_from_table(number_line_table), cursor_display_start, cursor_display_width
 end
 
 return M
