@@ -37,4 +37,9 @@ function M.split_at_range(str, range_start, range_width)
     return before, range, after
 end
 
+function M.truncate_at(str, char_index)
+    local byte_index = M.char_to_byte_index(str, char_index) + 1
+    return str:sub(1, byte_index - 1)
+end
+
 return M

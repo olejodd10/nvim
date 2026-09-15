@@ -64,8 +64,10 @@ local function update_winbar(win_id)
   -- but shows the character index, which may be different (think tabs).
   local padding = string.rep(" ", offset)
   local number_line, cursor_display_start, cursor_display_width = rwnu_line.make_number_line(line, cursor_char, false, false) -- TODO use super-/subscript in winbar? Do we ever want that?
-  if number_line ~= "" then
-      local stylized_number_line = style.stylize_number_line(number_line, cursor_display_start, cursor_display_width)
+  local win_width = vim.api.nvim_win_get_width(win_id)
+  local truncated_number_line = utf8.truncate_at(number_line, win_width - offset + 1) -- Truncate because winbar does not handle line wrapping well
+  if truncated_number_line ~= "" then
+      local stylized_number_line = style.stylize_number_line(truncated_number_line, cursor_display_start, cursor_display_width)
       vim.wo[win_id].winbar = padding .. stylized_number_line
   else
       vim.wo[win_id].winbar = padding
