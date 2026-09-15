@@ -9,6 +9,9 @@ local in_superscript = false
 
 local enabled = true
 
+local last_update_pos = nil
+local row_diff_limit = 2 -- The minimum row movement required for update
+
 local winbar_enabled = true
 
 local overlay_enabled = true
@@ -31,6 +34,8 @@ local function clear(win_id)
     if winbar_enabled then
         clear_winbar(win_id)
     end
+
+    last_update_pos = nil
 end
 
 local function window_is_floating(win_id)
@@ -49,7 +54,7 @@ end
 local function update_winbar(win_id)
   local offset = vim.fn.getwininfo(win_id)[1].textoff
 
-  local row, cursor_byte = unpack(vim.api.nvim_win_get_cursor(win_id))
+  local row, col = unpack(vim.api.nvim_win_get_cursor(win_id))
   local line = vim.api.nvim_buf_get_lines(
     vim.api.nvim_win_get_buf(win_id),
     row - 1,
@@ -57,8 +62,8 @@ local function update_winbar(win_id)
     false
   )[1] or ""
 
-  -- cursor_byte is 0-indexed, cursor_char is 1-indexed
-  local cursor_char = utf8.byte_to_char_index(line, cursor_byte)
+  -- col is 0-indexed, cursor_char is 1-indexed
+  local cursor_char = utf8.byte_to_char_index(line, col)
 
   -- Note that the cursor number is positioned using the display column of the cursor,
   -- but shows the character index, which may be different (think tabs).
@@ -110,10 +115,36 @@ local function update_overlay_row_eof(number_line_table, cursor_display_start, c
     vim.api.nvim_buf_set_extmark(buf_id, overlay_extmark_ns, overlay_row, 0, opts)
 end
 
+local function diff(a, b)
+    if a > b then
+        return a - b
+    else
+        return b - a
+    end
+end
+
+local function overlay_can_be_skipped(win_id, row, col)
+    if not last_update_pos then
+        -- First drawing cannot be skipped
+        return false
+    elseif last_update_pos.win_id ~= win_id then
+        -- Should not skip when entering a new window
+        return false
+    elseif last_update_pos.row == row and last_update_pos.col == col then
+        -- Workaround - there may be multiple events that trigger an update,
+        -- and if two fire at the same time, we must redraw to avoid overlay
+        -- being cleared right after it's drawn
+        return false
+    else
+        -- We have moved within the window - check whether movement is significant
+        return diff(last_update_pos.row, row) < row_diff_limit
+    end
+end
+
 local function update_overlay(win_id)
     local buf_id = vim.api.nvim_win_get_buf(win_id)
 
-    local row, cursor_byte = unpack(vim.api.nvim_win_get_cursor(win_id))
+    local row, col = unpack(vim.api.nvim_win_get_cursor(win_id))
     local line = vim.api.nvim_buf_get_lines(
       vim.api.nvim_win_get_buf(win_id),
       row - 1,
@@ -121,14 +152,18 @@ local function update_overlay(win_id)
       false
     )[1] or ""
 
-    -- cursor_byte is 0-indexed, cursor_char is 1-indexed
-    local cursor_char = utf8.byte_to_char_index(line, cursor_byte)
+    -- col is 0-indexed, cursor_char is 1-indexed
+    local cursor_char = utf8.byte_to_char_index(line, col)
 
     -- Note that the cursor number is positioned using the display column of the cursor,
     -- but shows the character index, which may be different (think tabs).
     local number_line_table, cursor_display_start, cursor_display_width = rwnu_line.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
 
     clear_overlay(buf_id)
+
+    if overlay_can_be_skipped(win_id, row, col) then
+        return
+    end
 
     local overlay_row = row - 1 + overlay_offset
     if row_in_buffer(buf_id, overlay_row) then
@@ -149,6 +184,13 @@ local function update(win_id)
     if winbar_enabled then
         update_winbar(win_id)
     end
+
+    local row, col = unpack(vim.api.nvim_win_get_cursor(win_id))
+    last_update_pos = {
+        row = row,
+        col = col,
+        win_id = win_id,
+    }
 end
 
 local function update_all()
@@ -256,6 +298,10 @@ function M.setup(opts)
       in_subscript = true
   elseif opts.in_superscript == true then
       in_superscript = true
+  end
+
+  if is_integer(opts.row_diff_limit) then
+      row_diff_limit = opts.row_diff_limit
   end
 
   -- Disable if explicitly disabled
