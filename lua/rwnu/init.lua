@@ -123,18 +123,13 @@ local function diff(a, b)
     end
 end
 
-local function overlay_can_be_skipped(win_id, row, col)
+local function overlay_can_be_skipped(win_id, row)
     if not last_update_pos then
-        -- First drawing cannot be skipped
-        return false
+        -- On the first drawing we rarely want a word motion - skip
+        return true
     elseif last_update_pos.win_id ~= win_id then
-        -- Should not skip when entering a new window
-        return false
-    elseif last_update_pos.row == row and last_update_pos.col == col then
-        -- Workaround - there may be multiple events that trigger an update,
-        -- and if two fire at the same time, we must redraw to avoid overlay
-        -- being cleared right after it's drawn
-        return false
+        -- When entering a window we rarely want a word motion - skip
+        return true
     else
         -- We have moved within the window - check whether movement is significant
         return diff(last_update_pos.row, row) < row_diff_limit
@@ -161,7 +156,7 @@ local function update_overlay(win_id)
 
     clear_overlay(buf_id)
 
-    if overlay_can_be_skipped(win_id, row, col) then
+    if overlay_can_be_skipped(win_id, row) then
         return
     end
 
@@ -185,10 +180,9 @@ local function update(win_id)
         update_winbar(win_id)
     end
 
-    local row, col = unpack(vim.api.nvim_win_get_cursor(win_id))
+    local row = vim.api.nvim_win_get_cursor(win_id)[1]
     last_update_pos = {
         row = row,
-        col = col,
         win_id = win_id,
     }
 end
@@ -223,10 +217,6 @@ function M.enable()
   vim.api.nvim_create_autocmd({
     "CursorMoved",
     "CursorMovedI",
-    "BufEnter",
-    "WinEnter",
-    "WinScrolled",
-    "VimResized",
   }, {
     group = group,
     callback = function()
