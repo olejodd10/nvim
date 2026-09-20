@@ -22,7 +22,7 @@ end
 
 local function with_default(func)
   return function()
-    vim.cmd('noau normal! "zy"')
+    vim.cmd('noau normal! "zy')
     local selection = vim.fn.getreg('z')
     func({ cwd = project_root(), default_text = selection })
   end
@@ -39,5 +39,5 @@ vim.keymap.set('x', '<leader>fg', with_default(builtin.live_grep), {})
 vim.keymap.set('x', '<leader>ff', with_default(builtin.find_files), {})
 vim.keymap.set('x', '<leader>fb', with_default(builtin.buffers), {})
 vim.keymap.set('x', '<leader>fh', with_default(builtin.help_tags), {}) -- Path probably doesn't matter
-vim.keymap.set('x', '<leader>fw', from_project_root(builtin.grep_string), {}) -- grep_string kinda does this by default
+vim.keymap.set('x', '<leader>fw', from_project_root(builtin.grep_string), {}) -- grep_string kinda does with_default by default
 vim.keymap.set('x', '<leader>fs', with_default(builtin.git_files), {})
