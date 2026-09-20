@@ -22,4 +22,4 @@ require("lazy").setup(require("plugins"))
 require("lsp")
 
 require("pr_review").setup()
-require("rwnu").setup()
+require("rwnu").setup({overlay_enabled = true})

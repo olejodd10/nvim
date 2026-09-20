@@ -284,9 +284,10 @@ function M.setup(opts)
     overlay_offset = opts.overlay_offset
   end
 
+  -- Superscript unless explicitly disabled or subscript is enabled
   if opts.in_subscript == true then
       in_subscript = true
-  elseif opts.in_superscript == true then
+  elseif opts.in_superscript ~= false then
       in_superscript = true
   end
 
