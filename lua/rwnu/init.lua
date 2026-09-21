@@ -135,6 +135,33 @@ local function draw_overlay(buf_id, row, number_line_table, cursor_display_start
     end
 end
 
+local function on_operator_pending_mode(win_id)
+    if window_is_floating(win_id) then
+        return
+    end
+
+    if not overlay_enabled then
+        return
+    end
+
+    local buf_id = vim.api.nvim_win_get_buf(win_id)
+
+    local row, col = unpack(vim.api.nvim_win_get_cursor(win_id))
+    local line = vim.api.nvim_buf_get_lines(
+      vim.api.nvim_win_get_buf(win_id),
+      row - 1,
+      row,
+      false
+    )[1] or ""
+
+    -- Clearing overlay only needed when moving cursor, i.e. not here
+    local cursor_char = utf8.byte_to_char_index(line, col)
+
+    local number_line_table, cursor_display_start, cursor_display_width = rwnu_line.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
+
+    draw_overlay(buf_id, row, number_line_table, cursor_display_start, cursor_display_width)
+end
+
 local function on_movement(win_id)
     if window_is_floating(win_id) then
         return
@@ -211,6 +238,16 @@ function M.enable()
         local current_win = vim.api.nvim_get_current_win()
         on_movement(current_win)
     end,
+  })
+
+  vim.api.nvim_create_autocmd("ModeChanged", {
+      group = group,
+      pattern = "*:no", -- from any mode to operator-pending mode
+      callback = function()
+          local current_win = vim.api.nvim_get_current_win()
+          on_operator_pending_mode(current_win)
+          vim.cmd.redraw() -- if not, redraw will happen when operator pending finishes
+      end,
   })
 
   enabled = true
