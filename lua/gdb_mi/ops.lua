@@ -36,6 +36,7 @@ local COMMANDS = {
   Watch = "-break-watch",
   InfoBreakpoints = "-break-list", -- weird naming in MI
   Delete = "-break-delete",
+  File = "-file-exec-and-symbols",
 }
 
 local function send(mi_prefix, args)
