@@ -3,8 +3,16 @@ vim.opt.termguicolors = true
 vim.opt.nu = true
 vim.opt.rnu = true
 
-vim.opt.tabstop = 4
-vim.opt.softtabstop = 4
+-- Situation                           | Option
+-- ------------------------------------|-------------
+-- >> and <<                           | shiftwidth
+-- Automatic indentation               | shiftwidth
+-- <Tab> while inserting indentation   | shiftwidth
+-- <Tab> after non-whitespace text     | softtabstop
+-- Width/display of literal \t         | tabstop
+-- Whether new indentation uses spaces | expandtab
+vim.opt.tabstop = 8
+vim.opt.softtabstop = 2
 vim.opt.shiftwidth = 4
 vim.opt.expandtab = true
 
