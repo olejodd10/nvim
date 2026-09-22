@@ -34,5 +34,3 @@ vim.opt.signcolumn = 'yes' -- Otherwise will shift screen annoyingly when there 
 vim.opt.foldcolumn = "1"
 
 vim.opt.winborder = "rounded"
-
--- vim.cmd.lan("en_GB", true)

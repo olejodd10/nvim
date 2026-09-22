@@ -17,7 +17,7 @@ local function navdelete()
     navshow()
 end
 
-vim.keymap.set("n", "<M-p>", navprev) 
+vim.keymap.set("n", "<M-p>", navprev)
 vim.keymap.set("n", "<M-right>", navright) -- Consider just <right> and <left>
 vim.keymap.set("n", "<M-left>", navleft)
 vim.keymap.set("n", "<M-down>", navdelete)
