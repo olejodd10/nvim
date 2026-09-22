@@ -51,7 +51,9 @@ vim.keymap.set("n", "<C-s>s", "<C-c>") -- Can exit with s as well as <C-c>
 
 -- Powerful Norwegian remaps
 vim.keymap.set({ "n", "x" }, "æ", ":noh<CR>/", {remap = true})
+vim.keymap.set("n", "qæ", "q/")
 vim.keymap.set("n", "ø", ":")
+vim.keymap.set("n", "qø", "q:")
 vim.keymap.set("", "å", "$")
 
 vim.keymap.set("n", "Ø", "[")
