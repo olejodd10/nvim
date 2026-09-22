@@ -15,6 +15,7 @@ local row_diff_limit = 2 -- The minimum row movement required for drawing overla
 local winbar_enabled = true
 
 local overlay_enabled = true
+local overlay_enabled_on_movement = true
 local overlay_extmark_ns = vim.api.nvim_create_namespace('rwnu')
 local overlay_offset = 1
 
@@ -185,7 +186,7 @@ local function on_movement(win_id)
 
     clear_overlay(buf_id)
 
-    if overlay_enabled and movement_qualifies_for_overlay(win_id, row) then
+    if overlay_enabled and overlay_enabled_on_movement and movement_qualifies_for_overlay(win_id, row) then
         local number_line_table, cursor_display_start, cursor_display_width = rwnu_line.make_number_line_table(line, cursor_char, in_subscript, in_superscript)
         draw_overlay(buf_id, row, number_line_table, cursor_display_start, cursor_display_width)
     end
@@ -301,6 +302,10 @@ function M.setup(opts)
   -- Disable unless explicitly enabled
   if opts.overlay_enabled ~= true then
     overlay_enabled = false
+  end
+
+  if opts.overlay_enabled_on_movement ~= true then
+    overlay_enabled_on_movement = false
   end
 
   if is_integer(opts.overlay_offset) then
