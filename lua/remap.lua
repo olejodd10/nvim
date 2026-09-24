@@ -22,7 +22,7 @@ vim.keymap.set("i", "<C-H>", "<C-w>") -- <C-H> is what most terminals send for C
 vim.keymap.set("i", "<C-DEL>", "<Esc>ldwi") -- Delete word behind the cursor
 vim.keymap.set("i", "<C-v>", "<C-r>+")
 
-vim.keymap.set("n", "<leader>c", ":!")
+vim.keymap.set("n", "<leader>c", ":bel hor te ")
 vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
 
 vim.keymap.set("n", "<leader>s", [[:%s///g<Left><Left><Left>]])
