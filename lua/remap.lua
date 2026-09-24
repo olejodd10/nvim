@@ -50,15 +50,25 @@ vim.keymap.set("n", "<C-s>k", ":horizontal resize -5<CR><C-s>", {remap = true})
 vim.keymap.set("n", "<C-s>s", "<C-c>") -- Can exit with s as well as <C-c>
 
 -- Powerful Norwegian remaps
-vim.keymap.set({ "n", "x" }, "æ", ":noh<CR>/", {remap = true})
-vim.keymap.set("n", "qæ", "q/")
-vim.keymap.set("n", "ø", ":")
-vim.keymap.set("n", "qø", "q:")
-vim.keymap.set("", "å", "$")
+vim.keymap.set("n", "æ", ":noh<CR>/")
+vim.keymap.set("x", "æ", "/", {remap = true}) -- Recursive to trigger visual mode "/" remap. Avoid :noh<CR> because it fails in visual mode and is meaningless when we start a search just after it.
+vim.keymap.set("o", "æ", "f/")
 
-vim.keymap.set("n", "Ø", "[")
-vim.keymap.set("n", "Æ", "]")
-vim.keymap.set("", "Å", "_")
+vim.keymap.set({ "n", "x" }, "ø", ":")
+vim.keymap.set("o", "ø", "f:")
+
+vim.keymap.set({ "n", "x" }, "qæ", "q/")
+vim.keymap.set({ "n", "x" }, "qø", "q:")
+
+vim.keymap.set({ "n", "x", "o" }, "Ø", "[")
+vim.keymap.set({ "n", "x", "o" }, "Æ", "]")
+vim.keymap.set({ "n", "x", "o" }, "ØØ", "[[")
+vim.keymap.set({ "n", "x", "o" }, "ÆÆ", "]]")
+vim.keymap.set({ "n", "x", "o" }, "ØÆ", "[]")
+vim.keymap.set({ "n", "x", "o" }, "ÆØ", "][")
+
+vim.keymap.set({ "n", "x", "o" }, "å", "$")
+vim.keymap.set({ "n", "x", "o" }, "Å", "_")
 
 -- From ThePrimeagen
 vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
