@@ -6,15 +6,12 @@ local function navprev()
 end
 local function navright()
     vim.cmd.bnext()
-    navshow()
 end
 local function navleft()
     vim.cmd.bprevious()
-    navshow()
 end
 local function navdelete()
     vim.cmd.bdelete()
-    navshow()
 end
 
 vim.keymap.set("n", "<M-p>", navprev)
