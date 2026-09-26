@@ -45,6 +45,10 @@ local parsers = {
 
 require('nvim-treesitter').install(parsers):wait(300000) -- wait max. 5 minutes
 
+-- 'diff' is used for 'diff' and 'gitdiff' but not 'git', which is what Fugitive opens.
+-- So let's register it manually
+vim.treesitter.language.register('diff', 'git')
+
 vim.api.nvim_create_autocmd('FileType', {
     callback = function(args)
         local lang = vim.treesitter.language.get_lang(args.match)
