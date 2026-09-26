@@ -106,6 +106,11 @@ return {
   -- Surrounding
   'tpope/vim-surround',
 
-  -- Function argument navigation and text objects
-  'PeterRincker/vim-argumentative',
+  -- Awesome text objects based on treesitter
+  {
+    'nvim-treesitter/nvim-treesitter-textobjects',
+    branch = 'main',
+    init = function() vim.g.no_plugin_maps = true end,
+    config = function() require('config.treesitter-textobjects') end,
+  },
 }
