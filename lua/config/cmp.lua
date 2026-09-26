@@ -25,7 +25,11 @@ cmp.setup({
 -- Use buffer source for `/` and `?` (if you enabled `native_menu`, this won't work anymore).
 -- Do not confuse this with the cmp-cmdline plugin, that is just for sources
 cmp.setup.cmdline({ '/', '?' }, {
-    mapping = cmp.mapping.preset.cmdline(), -- Tab completion is not that important here since for / and ? we actually tend to use <CR> to finish anyways
+    mapping = cmp.mapping.preset.cmdline({
+        ['<C-y>'] = {
+          c = cmp.mapping.confirm({ select = true }),
+        },
+    }),
     sources = {
         { name = 'buffer' },
     }
