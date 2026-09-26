@@ -32,5 +32,10 @@ vim.opt.smartcase = true
 vim.opt.signcolumn = 'yes' -- Otherwise will shift screen annoyingly when there is something to display in the signcolumn
 
 vim.opt.foldcolumn = "1"
+vim.opt.foldtext = ""
+vim.opt.fillchars = {
+    fold = " ",
+    foldinner = "│",
+}
 
 vim.opt.winborder = "rounded"
