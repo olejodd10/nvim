@@ -12,6 +12,7 @@ require("citruszest").setup({
 
     WinSeparator = { fg = light_gray, bg = black },
     NvimTreeWinSeparator = { fg = light_gray, bg = black },
+    NvimTreeStatuslineNc = { fg = black, bg = gray },
 
     ColorColumn = { bg = dark_gray },
 
