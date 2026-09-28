@@ -16,6 +16,7 @@ require("options")
 require("remap")
 require("buffers")
 require("tabs")
+require("term")
 
 require("lazy").setup(require("plugins"))
 
