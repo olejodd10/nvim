@@ -34,6 +34,7 @@ local parsers = {
     'csv',
     'json',
     'markdown',
+    'proto',
     'rst',
     'ssh_config',
     'xml',
@@ -44,6 +45,18 @@ local parsers = {
 }
 
 require('nvim-treesitter').install(parsers):wait(300000) -- wait max. 5 minutes
+
+-- As recommended by nvim-lspconfig
+vim.filetype.add({
+    filename = {
+        ['buf.yaml'] = 'buf-config',
+        ['buf.gen.yaml'] = 'buf-config',
+        ['buf.policy.yaml'] = 'buf-config',
+        ['buf.lock'] = 'buf-config',
+    },
+})
+
+vim.treesitter.language.register('yaml', 'buf-config')
 
 -- 'diff' is used for 'diff' and 'gitdiff' but not 'git', which is what Fugitive opens.
 -- So let's register it manually
