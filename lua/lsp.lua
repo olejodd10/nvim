@@ -59,11 +59,23 @@ vim.api.nvim_create_autocmd('LspAttach', {
 vim.lsp.enable('clangd')
 vim.lsp.enable('lua_ls')
 vim.lsp.enable('rust_analyzer')
+vim.lsp.enable('buf-lsp')
 
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
 vim.lsp.config('clangd', { capabilities = capabilities })
 vim.lsp.config('rust_analyzer', { capabilities = capabilities })
+
+vim.lsp.config('buf-lsp', {
+    capabilities = capabilities,
+    cmd = { 'buf', 'lsp', 'serve', '--log-format=text' },
+    filetypes = { 'proto', 'buf-config' },
+    root_markers = { 'buf.yaml', '.git' },
+    reuse_client = function(client, config)
+        -- `buf lsp serve` is meant to be used with multiple workspaces.
+        return client.name == config.name
+    end,
+})
 
 -- As suggested by nvim-lspconfig for Neovim development
 vim.lsp.config('lua_ls', {
