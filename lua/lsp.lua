@@ -25,24 +25,21 @@ vim.api.nvim_create_autocmd('LspAttach', {
   end,
 })
 
+local capabilities = require('cmp_nvim_lsp').default_capabilities()
+
 -- Zephyr places compile_commands.json here, from which clangd can get include paths
 local function get_clangd_cmd()
-  local cwd = vim.loop.cwd()
-  local project = vim.fn.fnamemodify(cwd, ":t")
-  local build_dir = cwd .. "/build/" .. project
+  local cwd = vim.uv.cwd()
+  if cwd then
+    local project = vim.fn.fnamemodify(cwd, ":t")
+    local build_dir = cwd .. "/build/" .. project
 
-  if vim.fn.isdirectory(build_dir) == 1 then
-    return { "clangd", "--compile-commands-dir=" .. build_dir }
-  else
-    return { "clangd" }
+    if vim.fn.isdirectory(build_dir) == 1 then
+      return { "clangd", "--compile-commands-dir=" .. build_dir }
+    end
   end
+  return { "clangd" }
 end
-
-vim.lsp.config('clangd', {
-  cmd = get_clangd_cmd(),
-})
-
--- Loads config from nvim-lspconfig. See :checkhealth vim.lsp when attached
 
 -- https://neovim.io/doc/user/lsp.html#lsp-config
 -- vim.lsp.config('clangd', {on_attach = ...}) would overwrite nvim-lspconfig default, but I want to extend it
@@ -50,64 +47,68 @@ vim.lsp.config('clangd', {
 vim.api.nvim_create_autocmd('LspAttach', {
   callback = function(args)
     local client = assert(vim.lsp.get_client_by_id(args.data.client_id))
+    local opts = {buffer = args.buf}
     if client.name == 'clangd' then
         vim.keymap.set('n', 'gh', '<cmd>LspClangdSwitchSourceHeader<cr>', opts) -- default for gh is select mode, i.e. not useful
     end
   end,
 })
 
-vim.lsp.enable('clangd')
-vim.lsp.enable('lua_ls')
-vim.lsp.enable('rust_analyzer')
-
-local capabilities = require('cmp_nvim_lsp').default_capabilities()
-
-vim.lsp.config('clangd', { capabilities = capabilities })
-vim.lsp.config('rust_analyzer', { capabilities = capabilities })
+vim.lsp.config('clangd', {
+  capabilities = capabilities,
+  cmd = get_clangd_cmd(),
+})
 
 -- As suggested by nvim-lspconfig for Neovim development
 vim.lsp.config('lua_ls', {
-    capabilities = capabilities,
-    on_init = function(client)
-        if client.workspace_folders then
-            local path = client.workspace_folders[1].name
-            if
-                path ~= vim.fn.stdpath('config')
-                and (vim.uv.fs_stat(path .. '/.luarc.json') or vim.uv.fs_stat(path .. '/.luarc.jsonc'))
-                then
-                    return
-                end
-            end
+  capabilities = capabilities,
+  on_init = function(client)
+    if client.workspace_folders then
+      local path = client.workspace_folders[1].name
+      if path ~= vim.fn.stdpath('config') and (vim.uv.fs_stat(path .. '/.luarc.json')
+        or vim.uv.fs_stat(path .. '/.luarc.jsonc'))
+      then
+        return
+      end
+    end
 
-            client.config.settings.Lua = vim.tbl_deep_extend('force', client.config.settings.Lua, {
-                runtime = {
-                    -- Tell the language server which version of Lua you're using (most
-                    -- likely LuaJIT in the case of Neovim)
-                    version = 'LuaJIT',
-                    -- Tell the language server how to find Lua modules same way as Neovim
-                    -- (see `:h lua-module-load`)
-                    path = {
-                        'lua/?.lua',
-                        'lua/?/init.lua',
-                    },
-                },
-                -- Make the server aware of Neovim runtime files
-                workspace = {
-                    checkThirdParty = false,
-                    library = {
-                        vim.env.VIMRUNTIME,
-                        -- For LSP Settings Type Annotations: https://github.com/neovim/nvim-lspconfig#lsp-settings-type-annotations
-                        vim.api.nvim_get_runtime_file("lua/lspconfig", false)[1],
-                    },
-                    -- Or pull in all of 'runtimepath'.
-                    -- NOTE: this is a lot slower and will cause issues when working on
-                    -- your own configuration.
-                    -- See https://github.com/neovim/nvim-lspconfig/issues/3189
-                    -- library = vim.api.nvim_get_runtime_file('', true),
-                },
-            })
-        end,
-        settings = {
-            Lua = {},
+    client.config.settings.Lua = vim.tbl_deep_extend('force', client.config.settings.Lua, {
+      runtime = {
+        -- Tell the language server which version of Lua you're using (most
+        -- likely LuaJIT in the case of Neovim)
+        version = 'LuaJIT',
+        -- Tell the language server how to find Lua modules same way as Neovim
+        -- (see `:h lua-module-load`)
+        path = {
+          'lua/?.lua',
+          'lua/?/init.lua',
         },
+      },
+      -- Make the server aware of Neovim runtime files
+      workspace = {
+        checkThirdParty = false,
+        library = {
+          vim.env.VIMRUNTIME,
+          -- For LSP Settings Type Annotations: https://github.com/neovim/nvim-lspconfig#lsp-settings-type-annotations
+          vim.api.nvim_get_runtime_file("lua/lspconfig", false)[1],
+        },
+        -- Or pull in all of 'runtimepath'.
+        -- NOTE: this is a lot slower and will cause issues when working on
+        -- your own configuration.
+        -- See https://github.com/neovim/nvim-lspconfig/issues/3189
+        -- library = vim.api.nvim_get_runtime_file('', true),
+      },
     })
+  end,
+  settings = {
+    Lua = {},
+  },
+})
+
+vim.lsp.config('rust_analyzer', {
+  capabilities = capabilities,
+})
+
+vim.lsp.enable('clangd')
+vim.lsp.enable('lua_ls')
+vim.lsp.enable('rust_analyzer')
