@@ -105,10 +105,21 @@ vim.lsp.config('lua_ls', {
   },
 })
 
+-- Use GetOcpIndent as indentexpr instead of the default GetOCamlIndent
+local ocp_indent_path = vim.trim(vim.fn.system("opam var ocp-indent:share")) .. "/vim"
+if vim.fn.isdirectory(ocp_indent_path) == 1 then
+  vim.opt.rtp:prepend(ocp_indent_path)
+end
+
+vim.lsp.config('ocamllsp', {
+  capabilities = capabilities
+})
+
 vim.lsp.config('rust_analyzer', {
   capabilities = capabilities,
 })
 
 vim.lsp.enable('clangd')
 vim.lsp.enable('lua_ls')
+vim.lsp.enable('ocamllsp')
 vim.lsp.enable('rust_analyzer')
