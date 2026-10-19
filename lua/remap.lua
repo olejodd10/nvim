@@ -23,6 +23,7 @@ vim.keymap.set("i", "<C-DEL>", "<Esc>ldwi") -- Delete word behind the cursor
 vim.keymap.set("i", "<C-v>", "<C-r>+")
 
 vim.keymap.set("n", "<leader>c", ":bel hor te ")
+vim.keymap.set("x", "<leader>c", [["zy:bel hor te <C-r>z]])
 vim.keymap.set("n", "<leader>r", vim.cmd.vsp)
 
 vim.keymap.set("n", "<leader>s", [[:%s///g<Left><Left><Left>]])
@@ -73,6 +74,20 @@ vim.keymap.set({ "x", "o" }, "iÆ", "i]")
 
 vim.keymap.set({ "n", "x", "o" }, "å", "$")
 vim.keymap.set({ "n", "x", "o" }, "Å", "_")
+
+-- ¤ Scarab zone ¤
+-- This seems redundant when the : register stores the last executed command,
+-- but by using "x" we keep the stored command if executing something else
+local function store_and_execute()
+    local cmdline = vim.fn.getcmdline()
+    vim.fn.setreg("x", cmdline)
+    vim.fn.feedkeys(vim.keycode("<CR>"))
+end
+
+vim.keymap.set("x", "¤", [["xy]])
+vim.keymap.set("n", "¤", ":<C-r>x")
+vim.keymap.set("c", "¤", store_and_execute)
+vim.keymap.set("t", "¤", [[<C-\><C-N>:q<CR>]])
 
 -- From ThePrimeagen
 vim.keymap.set("n", "<leader>*", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gIc<Left><Left><Left><Left>]])
