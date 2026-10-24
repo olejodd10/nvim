@@ -11,6 +11,13 @@ vim.keymap.set("n", "<leader>Y", "\"+Y")
 
 vim.keymap.set("i", "<C-c>", "<Esc>")
 
+-- <C-i> maps to <Tab> by default (see :help ctrl-i and :map <C-i> resulting
+-- from the below). The default mapping is also recursive. Because of this,
+-- <C-i> is mapped onwards to any <Tab> mapping, for example the default
+-- Open Preview in nvim-tree. Make the mapping non-recursive, so it always
+-- jumps forward in the jump list instead of causing chaos.
+vim.keymap.set('n', '<C-i>', '<C-i>', { noremap = true })
+
 vim.keymap.set("i", "{<CR>", "{<CR>}<C-o>O")
 vim.keymap.set("i", "(<CR>", "(<CR>)<C-o>O")
 vim.keymap.set("i", "[<CR>", "[<CR>]<C-o>O")
